@@ -137,6 +137,7 @@ class MapEditor:
                 
                 terrain_row.append({
                     'terrain': terrain,
+                    'texture': terrain,
                     'explored': False
                 })
             terrain_map.append(terrain_row)
@@ -144,7 +145,6 @@ class MapEditor:
         print(f"Generated terrain map: {len(terrain_map)}x{len(terrain_map[0])}")
         return terrain_map
 
-    # Rest of the methods remain the same...
     def updateMousePos(self, mouseX, mouseY):
         self.mouseX = mouseX
         self.mouseY = mouseY

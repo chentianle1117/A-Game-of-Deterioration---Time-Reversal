@@ -1,32 +1,33 @@
-from cmu_graphics import CMUImage
+# texture_manager.py
+from cmu_graphics import *
 import os
+from PIL import Image
+import numpy as np
 
 class TextureManager:
     def __init__(self):
-        """Initialize the texture manager"""
-        print("\n=== Initializing TextureManager ===")
-        self._textures = {}  # Private texture storage
-        self._texture_paths = {}  # Store paths for reloading if needed
+        self._textures = {}
+        self._initialized = False
+        self.BLOCK_SIZE = 8  # Increased block size for better performance
+        
         self.texture_mappings = {
             'water': 'WATER.png',
             'dirt': 'DIRT.png',
             'tall_grass': 'TALLGRASS.png',
             'path_rocks': 'PATHROCKS.png'
         }
-        self._initialized = False
+        
+        # Pre-calculate RGB colors for performance
+        self._color_cache = {}
         self.load_textures()
+        self.verify_textures()
 
     def _find_texture_directory(self):
-        """Find the directory containing texture files"""
         current_dir = os.path.dirname(os.path.abspath(__file__))
         possible_paths = [
             os.path.join(current_dir, 'assets', 'textures'),
             os.path.join(current_dir, '..', 'assets', 'textures'),
-            os.path.join(current_dir, 'textures'),
-            os.path.join(current_dir, '..', 'textures'),
-            'assets/textures',
-            '../assets/textures',
-            'textures'
+            'assets/textures'
         ]
         
         for path in possible_paths:
@@ -34,65 +35,101 @@ class TextureManager:
                 return os.path.abspath(path)
         return None
 
+    def _cache_color(self, r, g, b):
+        """Cache RGB colors for reuse"""
+        key = (r, g, b)
+        if key not in self._color_cache:
+            self._color_cache[key] = rgb(r, g, b)
+        return self._color_cache[key]
+
     def load_textures(self):
-        """Load all textures from the assets directory"""
-        if self._initialized:
+        texture_dir = self._find_texture_directory()
+        if not texture_dir:
             return
 
-        print("\n=== Loading Textures ===")
-        texture_dir = self._find_texture_directory()
-        
-        if texture_dir is None:
-            print("ERROR: Could not find texture directory!")
-            self._initialized = True
-            return
-            
-        print(f"\nUsing texture directory: {texture_dir}")
-        
         for terrain_type, filename in self.texture_mappings.items():
             try:
                 image_path = os.path.join(texture_dir, filename)
-                self._texture_paths[terrain_type] = image_path
-                
                 if os.path.exists(image_path):
-                    try:
-                        # Load image as CMUImage and store both path and image
-                        self._textures[terrain_type] = CMUImage(image_path)
-                        print(f"✓ Successfully loaded {filename}")
-                    except Exception as e:
-                        print(f"✗ Error creating CMUImage for {filename}: {e}")
-                        self._textures[terrain_type] = None
-                else:
-                    print(f"✗ File not found: {image_path}")
-                    self._textures[terrain_type] = None
+                    # Load and process image
+                    pil_image = Image.open(image_path).convert('RGB')
+                    # Resize image to smaller size for better performance
+                    pil_image = pil_image.resize((32, 32), Image.Resampling.LANCZOS)
+                    pixel_array = np.array(pil_image)
+                    
+                    # Calculate blocks
+                    height, width, _ = pixel_array.shape
+                    blocks_height = height // self.BLOCK_SIZE
+                    blocks_width = width // self.BLOCK_SIZE
+                    
+                    # Process blocks more efficiently
+                    blocks = np.zeros((blocks_height, blocks_width, 3), dtype=np.int32)
+                    for y in range(blocks_height):
+                        for x in range(blocks_width):
+                            block = pixel_array[
+                                y*self.BLOCK_SIZE:(y+1)*self.BLOCK_SIZE,
+                                x*self.BLOCK_SIZE:(x+1)*self.BLOCK_SIZE
+                            ]
+                            blocks[y, x] = np.mean(block, axis=(0, 1)).astype(np.int32)
+                    
+                    # Pre-cache all colors
+                    for y in range(blocks_height):
+                        for x in range(blocks_width):
+                            r, g, b = blocks[y, x]
+                            self._cache_color(int(r), int(g), int(b))
+                    
+                    self._textures[terrain_type] = {
+                        'blocks': blocks,
+                        'size': (blocks_width, blocks_height)
+                    }
+                    
             except Exception as e:
-                print(f"✗ Error loading {filename}: {e}")
-                self._textures[terrain_type] = None
-        
-        self._initialized = True
-        self.verify_textures()
+                print(f"Error loading {filename}: {e}")
 
-    def get_texture(self, terrain_type):
-        """Get a texture by terrain type, reloading if necessary"""
-        # If texture is missing but we have its path, try to reload it
-        if (terrain_type in self._textures and 
-            self._textures[terrain_type] is None and 
-            terrain_type in self._texture_paths):
-            try:
-                self._textures[terrain_type] = CMUImage(self._texture_paths[terrain_type])
-            except Exception:
-                return None
-                
-        return self._textures.get(terrain_type)
+    def draw_texture(self, terrain_type, x, y, width, height):
+        """Draw a texture at the specified location and size using cached colors"""
+        texture_data = self._textures.get(terrain_type)
+        if not texture_data:
+            return False
+        
+        try:
+            blocks = texture_data['blocks']
+            blocks_width, blocks_height = texture_data['size']
+            
+            # Calculate block dimensions and round to integers
+            block_width = int(width / blocks_width)
+            block_height = int(height / blocks_height)
+            
+            # Draw blocks in larger chunks
+            for by in range(blocks_height):
+                block_y = int(y + by * block_height)
+                for bx in range(blocks_width):
+                    r, g, b = blocks[by, bx]
+                    color = self._cache_color(int(r), int(g), int(b))
+                    block_x = int(x + bx * block_width)
+                    
+                    drawRect(block_x, block_y, 
+                            block_width + 1, block_height + 1,
+                            fill=color)
+            return True
+            
+        except Exception as e:
+            print(f"Error drawing texture {terrain_type}: {e}")
+            return False
 
     def verify_textures(self):
-        """Verify all textures are loaded correctly and print status"""
+        """Verify loaded textures"""
         print("\n=== Texture Verification ===")
         total_loaded = 0
         for terrain_type in self.texture_mappings:
-            is_loaded = self._textures.get(terrain_type) is not None
-            status = "✓ Loaded" if is_loaded else "✗ Missing"
-            if is_loaded:
+            if terrain_type in self._textures:
+                print(f"✓ {terrain_type}: Loaded")
                 total_loaded += 1
-            print(f"{terrain_type}: {status}")
-        print(f"\nTotal textures loaded: {total_loaded}/{len(self.texture_mappings)}")
+            else:
+                print(f"✗ {terrain_type}: Not loaded")
+        print(f"\nTextures loaded: {total_loaded}/{len(self.texture_mappings)}")
+        return total_loaded > 0
+
+    def get_texture(self, terrain_type):
+        """Legacy method for compatibility"""
+        return None

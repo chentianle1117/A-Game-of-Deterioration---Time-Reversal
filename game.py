@@ -54,6 +54,48 @@ class Game:
             self.setMiniMap()
             self.updateCamera()
     
+    def getVisibleCells(self):
+        """Calculate visible cell range"""
+        startCol = max(0, int(self.cameraX / self.BASE_CELL_WIDTH))
+        startRow = max(0, int(self.cameraY / self.BASE_CELL_HEIGHT))
+        
+        visibleCols = int(self.WINDOW_WIDTH / (self.BASE_CELL_WIDTH * self.zoomLevel)) + 2
+        visibleRows = int(self.WINDOW_HEIGHT / (self.BASE_CELL_HEIGHT * self.zoomLevel)) + 2
+        
+        endCol = min(self.WORLD_WIDTH, startCol + visibleCols)
+        endRow = min(self.WORLD_HEIGHT, startRow + visibleRows)
+        
+        return startRow, startCol, endRow, endCol
+        
+    def redrawGame(self):
+        """Draw the game state"""
+        # Draw background
+        drawRect(0, 0, self.WINDOW_WIDTH, self.WINDOW_HEIGHT, fill='white')
+        
+        try:
+            # Get visible range
+            startRow, startCol, endRow, endCol = self.getVisibleCells()
+            
+            # Draw visible cells
+            for row in range(startRow, endRow):
+                for col in range(startCol, endCol):
+                    if (0 <= row < self.WORLD_HEIGHT and 
+                        0 <= col < self.WORLD_WIDTH):
+                        self.drawCell(row, col)
+            
+            # Draw character
+            charX, charY = self.character.get_position()
+            screenX, screenY = self.worldToScreen(charX, charY)
+            self.character.draw(screenX, screenY, self.zoomLevel)
+            
+            # Draw UI elements
+            self.drawUI()
+            self.drawMiniMap()
+        except Exception as e:
+            print(f"Error in redrawGame: {str(e)}")
+            drawLabel("Error in rendering", self.WINDOW_WIDTH//2, 
+                     self.WINDOW_HEIGHT//2, fill='red', bold=True, size=20)
+
     def updateCamera(self):
         """Center camera on character"""
         charX, charY = self.character.get_position()
@@ -99,64 +141,37 @@ class Game:
         screenY = (worldY - self.cameraY) * self.zoomLevel
         return screenX, screenY
 
-    def getVisibleCells(self):
-        """Calculate visible cell range"""
-        startCol = max(0, int(self.cameraX / self.BASE_CELL_WIDTH))
-        startRow = max(0, int(self.cameraY / self.BASE_CELL_HEIGHT))
-        
-        visibleCols = int(self.WINDOW_WIDTH / (self.BASE_CELL_WIDTH * self.zoomLevel)) + 2
-        visibleRows = int(self.WINDOW_HEIGHT / (self.BASE_CELL_HEIGHT * self.zoomLevel)) + 2
-        
-        endCol = min(self.WORLD_WIDTH, startCol + visibleCols)
-        endRow = min(self.WORLD_HEIGHT, startRow + visibleRows)
-        
-        return startRow, startCol, endRow, endCol
-
     def drawCell(self, row, col):
-        """Draw a cell using texture if available, with fallback to colored rectangles"""
+        """Draw a cell with optimized texture rendering"""
         try:
-            # Calculate positions
+            # Calculate positions and round to integers for better performance
             worldX = col * self.BASE_CELL_WIDTH
             worldY = row * self.BASE_CELL_HEIGHT
             screenX, screenY = self.worldToScreen(worldX, worldY)
+            width = int(self.BASE_CELL_WIDTH * self.zoomLevel)
+            height = int(self.BASE_CELL_HEIGHT * self.zoomLevel)
             
-            # Calculate dimensions
-            width = self.BASE_CELL_WIDTH * self.zoomLevel
-            height = self.BASE_CELL_HEIGHT * self.zoomLevel
-            
-            # Get terrain type
-            cell_data = self.grid[row][col]
-            if not isinstance(cell_data, dict) or 'terrain' not in cell_data:
-                drawRect(screenX, screenY, width, height, 
-                        fill='red', border='black', borderWidth=1)
+            # Only draw if cell is actually visible
+            if (screenX + width < 0 or screenX > self.WINDOW_WIDTH or
+                screenY + height < 0 or screenY > self.WINDOW_HEIGHT):
                 return
-                
+            
+            # Get cell data
+            cell_data = self.grid[row][col]
             terrain = cell_data['terrain']
             
-            # Try to get texture
-            texture = self.texture_manager.get_texture(terrain)
-            
-            if texture is not None and hasattr(texture, '_imageData'):
-                try:
-                    # Draw texture scaled to cell size
-                    drawImage(texture, screenX, screenY, width=width, height=height)
-                except Exception as e:
-                    color = self.terrainTypes.get(terrain, 'gray')
-                    drawRect(screenX, screenY, width, height, 
-                            fill=color, border='black', borderWidth=1)
-            else:
-                # No valid texture, draw colored rectangle
+            # Try to draw texture
+            if not self.texture_manager.draw_texture(terrain, screenX, screenY, width, height):
+                # Fallback to simple colored rectangle
                 color = self.terrainTypes.get(terrain, 'gray')
                 drawRect(screenX, screenY, width, height, 
                         fill=color, border='black', borderWidth=1)
         
         except Exception as e:
-            try:
-                drawRect(screenX, screenY, width, height, 
-                        fill='red', border='black', borderWidth=1)
-            except:
-                pass
-    
+            # Minimal error handling for performance
+            drawRect(screenX, screenY, width, height, 
+                    fill='red', border='black', borderWidth=1)
+        
     def setZoom(self, newZoom):
         """Update zoom level within bounds"""
         self.zoomLevel = max(self.MIN_ZOOM, min(self.MAX_ZOOM, newZoom))
