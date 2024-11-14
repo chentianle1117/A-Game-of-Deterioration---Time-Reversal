@@ -85,28 +85,22 @@ def onMouseDrag(app, mouseX, mouseY):
         app.map_editor.paint(mouseX, mouseY)
 
 def redrawGame(app):
-    """Draw the game state"""
-    # Draw background
     drawRect(0, 0, app.width, app.height, fill='white')
-    
-    # Get visible range
     startRow, startCol, endRow, endCol = app.game.getVisibleCells()
-    
-    # Draw visible cells
+
     for row in range(startRow, endRow):
         for col in range(startCol, endCol):
             if (0 <= row < app.game.WORLD_HEIGHT and 
                 0 <= col < app.game.WORLD_WIDTH):
                 app.game.drawCell(row, col)
-    
-    # Draw character
+
     charX, charY = app.game.character.get_position()
     screenX, screenY = app.game.worldToScreen(charX, charY)
     app.game.character.draw(screenX, screenY, app.game.zoomLevel)
-    
-    # Draw UI elements
+
     app.game.drawUI()
     app.game.drawMiniMap()
+
 
 def redrawAll(app):
     """Main render function"""

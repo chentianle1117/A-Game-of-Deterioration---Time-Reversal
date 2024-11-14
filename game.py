@@ -14,15 +14,15 @@ class Game:
             self.WINDOW_HEIGHT = 600
             self.WORLD_WIDTH = 200
             self.WORLD_HEIGHT = 150
-            self.BASE_CELL_WIDTH = 20
-            self.BASE_CELL_HEIGHT = 15
+            self.BASE_CELL_WIDTH = 10
+            self.BASE_CELL_HEIGHT = 8
             
             # Camera and zoom settings
             self.cameraX = 0
             self.cameraY = 0
-            self.zoomLevel = 2.0
-            self.MIN_ZOOM = 1.0
-            self.MAX_ZOOM = 4.0
+            self.zoomLevel = 11.0
+            self.MIN_ZOOM = 5.0
+            self.MAX_ZOOM = 13.0
             
             # Terrain definitions - match exactly what map editor generates
             self.terrainTypes = {
@@ -34,7 +34,6 @@ class Game:
             
             # Initialize the texture manager
             self.texture_manager = TextureManager()
-            self.texture_manager.verify_textures()
             
             # Initialize grid from custom map
             if custom_map is None:
@@ -55,12 +54,14 @@ class Game:
             self.updateCamera()
     
     def getVisibleCells(self):
-        """Calculate visible cell range"""
-        startCol = max(0, int(self.cameraX / self.BASE_CELL_WIDTH))
-        startRow = max(0, int(self.cameraY / self.BASE_CELL_HEIGHT))
+        """Calculate visible cell range with padding optimization"""
+        # Add small padding for smooth scrolling
+        padding = 1
+        startCol = max(0, int(self.cameraX / self.BASE_CELL_WIDTH) - padding)
+        startRow = max(0, int(self.cameraY / self.BASE_CELL_HEIGHT) - padding)
         
-        visibleCols = int(self.WINDOW_WIDTH / (self.BASE_CELL_WIDTH * self.zoomLevel)) + 2
-        visibleRows = int(self.WINDOW_HEIGHT / (self.BASE_CELL_HEIGHT * self.zoomLevel)) + 2
+        visibleCols = int(self.WINDOW_WIDTH / (self.BASE_CELL_WIDTH * self.zoomLevel)) + padding * 2
+        visibleRows = int(self.WINDOW_HEIGHT / (self.BASE_CELL_HEIGHT * self.zoomLevel)) + padding * 2
         
         endCol = min(self.WORLD_WIDTH, startCol + visibleCols)
         endRow = min(self.WORLD_HEIGHT, startRow + visibleRows)
@@ -84,9 +85,10 @@ class Game:
                         self.drawCell(row, col)
             
             # Draw character
-            charX, charY = self.character.get_position()
-            screenX, screenY = self.worldToScreen(charX, charY)
-            self.character.draw(screenX, screenY, self.zoomLevel)
+            pos = self.character.get_position()
+            screen_pos = self.worldToScreen(*pos)
+            self.character.draw(*screen_pos, self.zoomLevel)
+
             
             # Draw UI elements
             self.drawUI()
@@ -141,36 +143,26 @@ class Game:
         screenY = (worldY - self.cameraY) * self.zoomLevel
         return screenX, screenY
 
+    # game.py
+    # In game.py's drawCell method
     def drawCell(self, row, col):
-        """Draw a cell with optimized texture rendering"""
-        try:
-            # Calculate positions and round to integers for better performance
-            worldX = col * self.BASE_CELL_WIDTH
-            worldY = row * self.BASE_CELL_HEIGHT
-            screenX, screenY = self.worldToScreen(worldX, worldY)
-            width = int(self.BASE_CELL_WIDTH * self.zoomLevel)
-            height = int(self.BASE_CELL_HEIGHT * self.zoomLevel)
-            
-            # Only draw if cell is actually visible
-            if (screenX + width < 0 or screenX > self.WINDOW_WIDTH or
-                screenY + height < 0 or screenY > self.WINDOW_HEIGHT):
-                return
-            
-            # Get cell data
-            cell_data = self.grid[row][col]
-            terrain = cell_data['terrain']
-            
-            # Try to draw texture
-            if not self.texture_manager.draw_texture(terrain, screenX, screenY, width, height):
-                # Fallback to simple colored rectangle
-                color = self.terrainTypes.get(terrain, 'gray')
-                drawRect(screenX, screenY, width, height, 
-                        fill=color, border='black', borderWidth=1)
+        worldX = col * self.BASE_CELL_WIDTH
+        worldY = row * self.BASE_CELL_HEIGHT
+        screenX, screenY = self.worldToScreen(worldX, worldY)
         
-        except Exception as e:
-            # Minimal error handling for performance
-            drawRect(screenX, screenY, width, height, 
-                    fill='red', border='black', borderWidth=1)
+        # Add 1 pixel to width and height to ensure no gaps between cells
+        width = int(self.BASE_CELL_WIDTH * self.zoomLevel) + 1
+        height = int(self.BASE_CELL_HEIGHT * self.zoomLevel) + 1
+
+        if (screenX + width > 0 and screenX < self.WINDOW_WIDTH and
+            screenY + height > 0 and screenY < self.WINDOW_HEIGHT):
+            cell_data = self.grid[row][col]
+            self.texture_manager.draw_texture(
+                cell_data['terrain'], 
+                screenX, screenY,
+                width, height, 
+                self.zoomLevel)
+
         
     def setZoom(self, newZoom):
         """Update zoom level within bounds"""

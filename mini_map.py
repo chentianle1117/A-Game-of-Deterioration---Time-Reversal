@@ -135,24 +135,18 @@ class MiniMap:
         )
 
     def draw_terrain(self):
-        """Draw terrain on minimap"""
         if self.cache.terrain_colors is None:
             return
-            
-        # Calculate base position for cells
+
         base_x = self.position['x']
         base_y = self.position['y']
         
-        # Draw each cell
         for i in range(len(self.cache.terrain_colors)):
             for j in range(len(self.cache.terrain_colors[0])):
                 x = base_x + j * self.scaled_cell['width']
                 y = base_y + i * self.scaled_cell['height']
-                
-                drawRect(x, y,
-                        self.scaled_cell['width'],
-                        self.scaled_cell['height'],
-                        fill=self.cache.terrain_colors[i, j])
+                drawRect(x, y, self.scaled_cell['width'], self.scaled_cell['height'], fill=self.cache.terrain_colors[i, j])
+
 
     def draw_player(self):
         """Draw player position on minimap"""

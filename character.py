@@ -20,11 +20,11 @@ class Character:
         
         # Character properties
         self.position = {
-            'x': (world_width * cell_width) // 2,  # Start at center of world
+            'x': (world_width * cell_width) // 2,
             'y': (world_height * cell_height) // 2
         }
         self.direction = 'down'
-        self.speed = 5
+        self.speed = 2.5  # Reduced for smaller cells
         
         # Visual properties
         self.colors = {
@@ -33,30 +33,12 @@ class Character:
             'direction': 'white'
         }
         self.visual = {
-            'base_size': min(cell_width, cell_height) * 0.8,
-            'outline_width': 2,
-            'direction_length': 0.7  # Percentage of size for direction indicator
+            'base_size': min(cell_width, cell_height) * 0.4,
+            'outline_width': 1,
+            'direction_length': 0.7
         }
 
-    def move(self, dx, dy):
-        """Move character with boundary checking and collision detection"""
-        # Calculate potential new position
-        new_x = self.position['x'] + (dx * self.speed)
-        new_y = self.position['y'] + (dy * self.speed)
-        
-        # Apply world boundaries
-        new_x = max(self.visual['base_size'], 
-                   min(new_x, 
-                       self.world_bounds['right'] - self.visual['base_size']))
-        new_y = max(self.visual['base_size'], 
-                   min(new_y, 
-                       self.world_bounds['bottom'] - self.visual['base_size']))
-        
-        # Update position
-        self.position['x'] = new_x
-        self.position['y'] = new_y
-
-    def get_position(self):
+    def get_position(self):  # <-- This method must be present and working
         """Get current position in world coordinates"""
         return self.position['x'], self.position['y']
 
@@ -71,20 +53,41 @@ class Character:
             return row, col
         return None
 
+    def move(self, dx, dy):
+        """Move character with boundary checking"""
+        scaled_speed = self.speed * (self.CELL_WIDTH / 20)
+        
+        # Calculate potential new position
+        new_x = self.position['x'] + (dx * scaled_speed)
+        new_y = self.position['y'] + (dy * scaled_speed)
+        
+        # Apply world boundaries
+        padding = self.visual['base_size']
+        new_x = max(padding, min(new_x, self.world_bounds['right'] - padding))
+        new_y = max(padding, min(new_y, self.world_bounds['bottom'] - padding))
+        
+        # Update position
+        self.position['x'] = new_x
+        self.position['y'] = new_y
+
     def draw(self, screen_x, screen_y, zoom_level):
         """Draw character with direction indicator"""
-        # Calculate scaled size
-        size = self.visual['base_size'] * zoom_level
+        # Calculate scaled size with minimum size limit
+        min_size = 3
+        size = max(min_size, self.visual['base_size'] * zoom_level)
         
-        # Draw character body (circle with outline)
+        # Scale outline width with zoom but keep minimum of 1
+        outline_width = max(1, min(self.visual['outline_width'] * zoom_level, 3))
+        
+        # Draw character body
         drawCircle(screen_x, screen_y, size/2,
                   fill=self.colors['body'],
                   border=self.colors['outline'],
-                  borderWidth=self.visual['outline_width'])
+                  borderWidth=outline_width)
         
         # Draw direction indicator
         indicator_length = size * self.visual['direction_length']
-        end_x, end_y = screen_x, screen_y  # Start at center
+        end_x, end_y = screen_x, screen_y
         
         if self.direction == 'right':
             end_x += indicator_length
@@ -95,25 +98,24 @@ class Character:
         elif self.direction == 'up':
             end_y -= indicator_length
         
-        # Draw direction line
+        line_width = max(1, min(math.ceil(zoom_level), 3))
         drawLine(screen_x, screen_y, end_x, end_y,
                 fill=self.colors['direction'],
-                lineWidth=math.ceil(zoom_level * 2))
+                lineWidth=line_width)
         
-        # Draw small dot at the end of direction indicator
-        dot_size = size * 0.15
+        dot_size = max(1, size * 0.15)
         drawCircle(end_x, end_y, dot_size,
                   fill=self.colors['direction'])
 
     def teleport(self, x, y):
-        """Teleport character to specific coordinates (for debugging/testing)"""
+        """Teleport character to specific coordinates"""
         self.position['x'] = max(self.visual['base_size'],
                                min(x, self.world_bounds['right'] - self.visual['base_size']))
         self.position['y'] = max(self.visual['base_size'],
                                min(y, self.world_bounds['bottom'] - self.visual['base_size']))
 
     def get_bounds(self):
-        """Get character's bounding box for collision detection"""
+        """Get character's bounding box"""
         size = self.visual['base_size']
         return {
             'left': self.position['x'] - size/2,
@@ -124,7 +126,7 @@ class Character:
 
     def set_speed(self, speed):
         """Set character movement speed"""
-        self.speed = max(1, min(speed, 20))  # Clamp between 1 and 20
+        self.speed = max(1, min(speed, 20))
 
     def get_info(self):
         """Get character information for debugging"""
