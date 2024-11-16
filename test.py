@@ -1,75 +1,39 @@
-# test.py
-from cmu_graphics import *
-import os
-from PIL import Image
-import numpy as np
+import time
+from PIL import Image, ImageEnhance, ImageFilter
+from texture_manager import TextureManagerOptimized
 
-def onAppStart(app):
-    app.messages = []
-    app.blockSize = 4  # Size of each block in pixels
-    
-    try:
-        # Load with PIL
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        image_path = os.path.join(current_dir, 'assets', 'textures', 'WATER.png')
-        
-        # Open and convert image
-        pil_image = Image.open(image_path)
-        if pil_image.mode != 'RGB':
-            pil_image = pil_image.convert('RGB')
-        
-        # Convert to numpy array for faster processing
-        pixel_array = np.array(pil_image)
-        width, height = pil_image.size
-        
-        # Calculate number of blocks
-        blocks_width = width // app.blockSize
-        blocks_height = height // app.blockSize
-        
-        # Store averaged blocks
-        app.blocks = []
-        for y in range(blocks_height):
-            row = []
-            for x in range(blocks_width):
-                # Get block of pixels
-                block = pixel_array[
-                    y*app.blockSize:(y+1)*app.blockSize,
-                    x*app.blockSize:(x+1)*app.blockSize
-                ]
-                # Average the colors in the block and convert to regular integers
-                avg_color = [int(x) for x in np.mean(block, axis=(0, 1))]
-                row.append(avg_color)
-            app.blocks.append(row)
-            
-        app.blocks_size = (blocks_width, blocks_height)
-        app.messages.append("Processed image into blocks")
-        
-    except Exception as e:
-        app.messages.append(f"Error: {str(e)}")
+def test_deterioration():
+    # Load a single texture
+    texture_manager = TextureManagerOptimized()
+    terrain_type = "dirt"  # Choose one texture to test
+    texture = texture_manager.textures.get(terrain_type)
 
-def redrawAll(app):
-    drawRect(0, 0, 400, 400, fill='white')
-    
-    # Draw messages
-    y = 30
-    for msg in app.messages:
-        drawLabel(msg, 200, y)
-        y += 30
-    
-    # Draw the blocks if we have them
-    if hasattr(app, 'blocks') and hasattr(app, 'blocks_size'):
-        blocks_width, blocks_height = app.blocks_size
-        scale = 4  # Scale up the final image
+    if not texture:
+        print(f"Failed to load texture for {terrain_type}.")
+        return
+
+    print(f"Loaded {terrain_type} texture. Starting deterioration test...")
+
+    # Simulate time-based deterioration
+    deterioration_steps = 10
+    for step in range(deterioration_steps):
+        print(f"\n[STEP {step + 1}] Applying deterioration...")
         
-        # Draw each averaged block
-        for y in range(blocks_height):
-            for x in range(blocks_width):
-                r, g, b = app.blocks[y][x]  # These are now regular Python ints
-                color = rgb(r, g, b)
-                drawRect(100 + x*scale, 200 + y*scale, 
-                        scale, scale, fill=color)
+        # Apply deterioration logic for dirt
+        enhancer = ImageEnhance.Contrast(texture)
+        texture = enhancer.enhance(1.1)  # Increase contrast by 10%
+        enhancer = ImageEnhance.Brightness(texture)
+        texture = enhancer.enhance(0.9)  # Reduce brightness by 10%
 
-def main():
-    runApp(width=400, height=400)
+        # Save the deteriorated texture for inspection
+        debug_filename = f"debug_dirt_step_{step + 1}.png"
+        texture.save(debug_filename)
+        print(f"[STEP {step + 1}] Saved deteriorated texture as {debug_filename}.")
 
-main()
+        # Wait 1 second to simulate time passage
+        time.sleep(1)
+
+    print("Deterioration test complete.")
+
+if __name__ == "__main__":
+    test_deterioration()

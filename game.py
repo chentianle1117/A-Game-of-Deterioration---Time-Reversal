@@ -18,9 +18,9 @@ class Game:
         # Camera and zoom settings
         self.cameraX = 0
         self.cameraY = 0
-        self.zoomLevel = 11.0
-        self.MIN_ZOOM = 5.0
-        self.MAX_ZOOM = 13.0
+        self.zoomLevel = 4.0
+        self.MIN_ZOOM = 3.0
+        self.MAX_ZOOM = 7.0
 
         # Terrain definitions
         self.terrainTypes = {
@@ -95,7 +95,7 @@ class Game:
         self.cameraY = charY - (self.WINDOW_HEIGHT / (2 * self.zoomLevel))
 
     def drawCell(self, row, col):
-        """Draw a single cell using optimized texture management."""
+        """Draw a single cell with debug info"""
         worldX = col * self.BASE_CELL_WIDTH
         worldY = row * self.BASE_CELL_HEIGHT
         screenX, screenY = self.worldToScreen(worldX, worldY)
@@ -105,12 +105,23 @@ class Game:
 
         if (screenX + width > 0 and screenX < self.WINDOW_WIDTH and
             screenY + height > 0 and screenY < self.WINDOW_HEIGHT):
-            cell_data = self.grid[row][col]
-            cmu_image = self.texture_manager.draw_texture(
-                cell_data['terrain'], width, height
-            )
-            if cmu_image:
-                drawImage(cmu_image, screenX, screenY, width=width, height=height)
+            try:
+                cell_data = self.grid[row][col]
+                terrain_type = cell_data['terrain']
+                print(f"[DEBUG] Drawing cell [{row},{col}] - {terrain_type}")
+                
+                cmu_image = self.texture_manager.draw_texture(
+                    terrain_type, width, height
+                )
+                
+                if cmu_image:
+                    drawImage(cmu_image, screenX, screenY, width=width, height=height)
+                    print(f"[DEBUG] Successfully drew {terrain_type} at ({screenX}, {screenY})")
+                else:
+                    print(f"[ERROR] Failed to get texture for {terrain_type}")
+                    
+            except Exception as e:
+                print(f"[ERROR] Failed to draw cell [{row},{col}]: {e}")
 
     def setZoom(self, newZoom):
         """Update zoom level within bounds."""
