@@ -1,6 +1,5 @@
-# main.py
 from cmu_graphics import *
-from game import Game
+from game import Game  # Ensure this uses the updated Game class
 from menu import MenuState
 from map_editor import MapEditor
 
@@ -20,9 +19,7 @@ def onAppStart(app):
 
 def initializeGame(app, custom_map=None):
     """Initialize or reset the game state"""
-    app.game = Game()
-    if custom_map:
-        app.game.setCustomGrid(custom_map)
+    app.game = Game(custom_map=custom_map)
 
 def gameKeyEvents(app, key):
     """Handle game-specific key events"""
@@ -58,6 +55,7 @@ def onKeyHold(app, keys):
             app.game.updateCamera()
 
 def onMousePress(app, mouseX, mouseY):
+    """Handle mouse press events"""
     if app.state == 'menu':
         action = app.menu.handleClick(mouseX, mouseY)
         if action == 'construct_map':
@@ -68,7 +66,7 @@ def onMousePress(app, mouseX, mouseY):
         if app.map_editor.isOverSaveButton(mouseX, mouseY):
             terrain_map = app.map_editor._generateTerrainMap()
             if terrain_map:
-                app.game = Game(custom_map=terrain_map)
+                initializeGame(app, custom_map=terrain_map)
                 app.state = 'game'
         else:
             app.map_editor.updateMousePos(mouseX, mouseY)
@@ -85,6 +83,7 @@ def onMouseDrag(app, mouseX, mouseY):
         app.map_editor.paint(mouseX, mouseY)
 
 def redrawGame(app):
+    """Redraw the game screen"""
     drawRect(0, 0, app.width, app.height, fill='white')
     startRow, startCol, endRow, endCol = app.game.getVisibleCells()
 
@@ -101,7 +100,6 @@ def redrawGame(app):
     app.game.drawUI()
     app.game.drawMiniMap()
 
-
 def redrawAll(app):
     """Main render function"""
     try:
@@ -113,7 +111,7 @@ def redrawAll(app):
             app.map_editor.draw()
     except Exception as e:
         print(f"Rendering error: {e}")
-        drawLabel("Error in rendering", app.width//2, app.height//2,
+        drawLabel("Error in rendering", app.width // 2, app.height // 2,
                  fill='red', bold=True, size=20)
 
 def main():
