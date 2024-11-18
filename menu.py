@@ -19,7 +19,7 @@ class MenuState:
         
         # Menu title settings
         self.title = {
-            'text': 'Terrain Explorer',
+            'text': 'Texture Deterioration Game',
             'size': 48,
             'y_pos': height // 3
         }

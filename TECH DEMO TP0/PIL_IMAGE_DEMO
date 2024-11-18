@@ -1,0 +1,23 @@
+from cmu_graphics import *
+from PIL import Image, ImageOps, ImageDraw, ImageFont
+
+def onAppStart(app):
+    app.width = 800
+    app.height = 600
+    app.stepsPerSecond = 60
+    
+    # Load and process an image
+    app.image = Image.open(r"W:\CMU Academics\Fall 2024 CMU\112 Term Project - Final\assets\textures\DIRT.png").convert("RGB")
+    app.image = ImageOps.grayscale(app.image).convert("RGB")  # Convert to sepia
+    
+    # Convert to CMUImage
+    app.cmuImage = CMUImage(app.image)
+
+def redrawAll(app):
+    drawImage(app.cmuImage, 0, 0, width=app.width, height=app.height)
+
+def main():
+    runApp(width=800, height=600)
+
+if __name__ == '__main__':
+    main()

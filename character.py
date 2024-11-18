@@ -33,7 +33,7 @@ class Character:
             'direction': 'white'
         }
         self.visual = {
-            'base_size': min(cell_width, cell_height) * 0.8,
+            'base_size': min(cell_width, cell_height) * 0.4,
             'outline_width': 1,
             'direction_length': 0.7
         }

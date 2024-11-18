@@ -1,0 +1,75 @@
+from cmu_graphics import *
+import numpy as np
+
+class SimpleMapEditorWithBrush:
+    def __init__(self, grid_size=(200, 200), window_size=(800, 600)):
+        # Grid and window settings
+        self.rows, self.cols = grid_size
+        self.width, self.height = window_size
+        self.cell_width = self.width / self.cols
+        self.cell_height = self.height / self.rows
+
+        # Initialize grid with all zeros (black background)
+        self.grid = np.zeros((self.rows, self.cols))
+
+        # Brush settings
+        self.brush_opacity = 0.2  # Opacity for each click (20% change)
+
+    def draw(self):
+        """Draw the grid"""
+        for row in range(self.rows):
+            for col in range(self.cols):
+                value = self.grid[row, col]
+                gray = int(value * 255)  # Convert value to grayscale (0 = black, 255 = white)
+                color = rgb(gray, gray, gray)
+
+                drawRect(col * self.cell_width, row * self.cell_height,
+                         self.cell_width, self.cell_height, fill=color)
+
+        # Draw instructions
+        drawLabel("Click to lighten cells", self.width // 2, 20, size=20, fill='white', bold=True)
+        drawLabel(f"Brush Opacity: {self.brush_opacity:.1f}", self.width // 2, 50, size=20, fill='white', bold=True)
+
+    def update_cell(self, mouseX, mouseY):
+        """Lighten the cell at the given mouse position"""
+        col = int(mouseX // self.cell_width)
+        row = int(mouseY // self.cell_height)
+
+        if 0 <= row < self.rows and 0 <= col < self.cols:
+            current_value = self.grid[row, col]
+            self.grid[row, col] = np.clip(current_value + self.brush_opacity, 0.0, 1.0)
+
+    def adjust_opacity(self, increase=True):
+        """Adjust the brush opacity"""
+        if increase:
+            self.brush_opacity = min(1.0, self.brush_opacity + 0.1)
+        else:
+            self.brush_opacity = max(0.1, self.brush_opacity - 0.1)
+
+def onAppStart(app):
+    app.width = 800
+    app.height = 600
+    app.map_editor = SimpleMapEditorWithBrush(grid_size=(50, 50), window_size=(800, 600))
+    app.setMaxShapeCount(999999)
+
+def onMousePress(app, mouseX, mouseY):
+    app.map_editor.update_cell(mouseX, mouseY)
+
+def onMouseDrag(app, mouseX, mouseY):
+    app.map_editor.update_cell(mouseX, mouseY)
+
+def onKeyPress(app, key):
+    if key == '=':  # Increase brush opacity
+        app.map_editor.adjust_opacity(increase=True)
+    elif key == '-':  # Decrease brush opacity
+        app.map_editor.adjust_opacity(increase=False)
+
+def redrawAll(app):
+    drawRect(0, 0, app.width, app.height, fill='black')  # Background
+    app.map_editor.draw()
+
+def main():
+    runApp(width=800, height=600)
+
+if __name__ == '__main__':
+    main()

@@ -2,7 +2,6 @@ from cmu_graphics import *
 from game import Game  # Ensure this uses the updated Game class
 from menu import MenuState
 from map_editor import MapEditor
-import time
 
 def onAppStart(app):
     """Initialize the application"""
@@ -100,19 +99,6 @@ def redrawGame(app):
 
     app.game.drawUI()
     app.game.drawMiniMap()
-
-def onStep(app):
-    """Handle game step updates"""
-    if app.state == 'game':
-        current_time = time.time()
-        print(f"\n[DEBUG] Step at {current_time}")
-        print(f"[DEBUG] Game state: {app.state}")
-        try:
-            app.game.texture_manager.update_deterioration()
-            # Force redraw after deterioration
-            app.game.texture_manager.clear_cache()
-        except Exception as e:
-            print(f"[ERROR] Failed to update deterioration: {e}")
 
 def redrawAll(app):
     """Main render function"""
