@@ -1,20 +1,93 @@
 from cmu_graphics import *
-from PIL import Image, ImageOps, ImageDraw, ImageFont
+from PIL import Image, ImageEnhance, ImageFilter
+import os
+
+class TextureDemo:
+    def __init__(self, texture_path):
+        # Load texture
+        self.original_image = Image.open(r"W:\CMU Academics\Fall 2024 CMU\112 Term Project - Final\assets\textures\PATHROCKS.png").convert('RGB')
+        self.modified_image = self.original_image.copy()
+        self.cmu_image = None
+
+        # Initialize effect levels
+        self.contrast_level = 0.0 
+        self.brightness_level = 0.0  
+        self.blur_level = 0.0  
+
+    def apply_effects(self):
+        # Reset to the original image
+        self.modified_image = self.original_image.copy()
+
+        # Apply contrast
+        contrast = ImageEnhance.Contrast(self.modified_image)
+        self.modified_image = contrast.enhance(1 + self.contrast_level * 0.5)  # Up to 50% increase
+
+        # Apply brightness
+        brightness = ImageEnhance.Brightness(self.modified_image)
+        self.modified_image = brightness.enhance(1 - self.brightness_level * 0.3)  # Up to 30% decrease
+
+        # Apply Gaussian blur
+        self.modified_image = self.modified_image.filter(
+            ImageFilter.GaussianBlur(radius=self.blur_level * 5)  # Blur radius increases with effect level
+        )
+
+        # Resize
+        resized = self.modified_image.resize((400, 400), Image.LANCZOS)
+        self.cmu_image = CMUImage(resized)
+
+    def adjust_contrast(self, increase=True):
+        if increase:
+            self.contrast_level = min(5.0, self.contrast_level + 0.1)
+        else:
+            self.contrast_level = max(-5.0, self.contrast_level - 0.1)
+        self.apply_effects()
+
+    def adjust_brightness(self, increase=True):
+        if increase:
+            self.brightness_level = min(5.0, self.brightness_level + 0.1)
+        else:
+            self.brightness_level = max(-5.0, self.brightness_level - 0.1)
+        self.apply_effects()
+
+    def adjust_blur(self, increase=True):
+        if increase:
+            self.blur_level = min(5.0, self.blur_level + 0.1)
+        else:
+            self.blur_level = max(-5.0, self.blur_level - 0.1)
+        self.apply_effects()
 
 def onAppStart(app):
     app.width = 800
     app.height = 600
-    app.stepsPerSecond = 60
-    
-    # Load and process an image
-    app.image = Image.open(r"W:\CMU Academics\Fall 2024 CMU\112 Term Project - Final\assets\textures\DIRT.png").convert("RGB")
-    app.image = ImageOps.grayscale(app.image).convert("RGB")  # Convert to sepia
-    
-    # Convert to CMUImage
-    app.cmuImage = CMUImage(app.image)
+    app.stepsPerSecond = 30
+
+    # Initialize TextureDemo with a sample texture
+    texture_path = os.path.join('assets', 'textures', 'DIRT.png')
+    app.texture_demo = TextureDemo(texture_path)
+    app.texture_demo.apply_effects()
+
+def onKeyPress(app, key):
+    if key == 'up':
+        app.texture_demo.adjust_contrast(increase=True)
+    elif key == 'down':
+        app.texture_demo.adjust_contrast(increase=False)
+    elif key == 'right':
+        app.texture_demo.adjust_brightness(increase=True)
+    elif key == 'left':
+        app.texture_demo.adjust_brightness(increase=False)
+    elif key == '=':
+        app.texture_demo.adjust_blur(increase=True)
+    elif key == '-':
+        app.texture_demo.adjust_blur(increase=False)
 
 def redrawAll(app):
-    drawImage(app.cmuImage, 0, 0, width=app.width, height=app.height)
+    drawRect(0, 0, app.width, app.height, fill='black')
+    drawLabel("Use UP/DOWN to adjust contrast", app.width // 2, 20, size=20, fill='white', bold=True)
+    drawLabel("Use LEFT/RIGHT to adjust brightness", app.width // 2, 40, size=20, fill='white', bold=True)
+    drawLabel("Use -/= to adjust blur", app.width // 2, 60, size=20, fill='white', bold=True)
+
+    if app.texture_demo.cmu_image:
+        drawImage(app.texture_demo.cmu_image, app.width // 2 - 200, app.height // 2 - 200)
 
 def main():
     runApp(width=800, height=600)

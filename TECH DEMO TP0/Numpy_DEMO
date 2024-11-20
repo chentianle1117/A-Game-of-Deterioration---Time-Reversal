@@ -10,34 +10,63 @@ class SimpleMapEditorWithBrush:
         self.cell_height = self.height / self.rows
 
         # Initialize grid with all zeros (black background)
+# ========================NUMPY CODE===================================================================================
         self.grid = np.zeros((self.rows, self.cols))
-
+# ========================NUMPY CODE===================================================================================
         # Brush settings
         self.brush_opacity = 0.2  # Opacity for each click (20% change)
 
+        # Upscale settings
+        self.upscaled_grid = None
+        self.final_height = self.rows * 4
+        self.final_width = self.cols * 4
+
+        self.brush_radius = 1
+        self.terrain_colors = {
+            'water': 'blue',
+            'dirt': 'brown',
+            'tall_grass': 'green',
+            'path_rocks': 'gray'
+        }
+
+        self.terrain_map = None  # Store terrain map after upscaling
+
     def draw(self):
-        """Draw the grid"""
-        for row in range(self.rows):
-            for col in range(self.cols):
-                value = self.grid[row, col]
-                gray = int(value * 255)  # Convert value to grayscale (0 = black, 255 = white)
-                color = rgb(gray, gray, gray)
+        if self.terrain_map:
+            for row in range(len(self.terrain_map)):
+                for col in range(len(self.terrain_map[0])):
+                    terrain = self.terrain_map[row][col]['terrain']
+                    color = self.terrain_colors[terrain]
+                    drawRect(col * self.cell_width, row * self.cell_height,
+                            self.cell_width, self.cell_height, fill=color, borderWidth=0.1, border='black')
+        else:
+            for row in range(self.rows):
+                for col in range(self.cols):
+                    value = self.grid[row, col]
+                    gray = int(value * 255)
+                    color = rgb(gray, gray, gray)
+                    drawRect(col * self.cell_width, row * self.cell_height,
+                            self.cell_width, self.cell_height, fill=color, borderWidth=0.1, border='white')
 
-                drawRect(col * self.cell_width, row * self.cell_height,
-                         self.cell_width, self.cell_height, fill=color)
 
-        # Draw instructions
+        # Draw instructions and button
         drawLabel("Click to lighten cells", self.width // 2, 20, size=20, fill='white', bold=True)
         drawLabel(f"Brush Opacity: {self.brush_opacity:.1f}", self.width // 2, 50, size=20, fill='white', bold=True)
+        drawRect(self.width // 2 - 100, self.height - 40, 200, 30, fill='gray', border='white')
+        drawLabel("Upscale Grid", self.width // 2, self.height - 25, size=20, fill='white', bold=True)
+        drawLabel(f"Brush Radius: {self.brush_radius}", self.width // 2, 80, size=20, fill='white', bold=True)
 
     def update_cell(self, mouseX, mouseY):
-        """Lighten the cell at the given mouse position"""
         col = int(mouseX // self.cell_width)
         row = int(mouseY // self.cell_height)
-
-        if 0 <= row < self.rows and 0 <= col < self.cols:
-            current_value = self.grid[row, col]
-            self.grid[row, col] = np.clip(current_value + self.brush_opacity, 0.0, 1.0)
+        for col_offset in range(-self.brush_radius, self.brush_radius + 1):
+            for row_offset in range(-self.brush_radius, self.brush_radius + 1):
+                new_row = row + row_offset
+                new_col = col + col_offset
+                if 0 <= new_row < self.rows and 0 <= new_col < self.cols:
+                    self.grid[new_row, new_col] = np.clip(
+                        self.grid[new_row, new_col] + self.brush_opacity, 0.0, 1.0
+                    )
 
     def adjust_opacity(self, increase=True):
         """Adjust the brush opacity"""
@@ -46,6 +75,35 @@ class SimpleMapEditorWithBrush:
         else:
             self.brush_opacity = max(0.1, self.brush_opacity - 0.1)
 
+    def upscale_grid(self):
+# ========================NUMPY CODE===================================================================================
+        upscaled = np.repeat(np.repeat(self.grid, 3, axis=0), 3, axis=1)
+# ========================NUMPY CODE===================================================================================
+        self.rows, self.cols = upscaled.shape
+        self.cell_width = self.width / self.cols
+        self.cell_height = self.height / self.rows
+        self.grid = upscaled
+
+        terrain_map = []
+        for row in range(self.rows):
+            terrain_row = []
+            for col in range(self.cols):
+                value = upscaled[row, col]
+                if value < 0.3:
+                    terrain = 'water'
+                elif value < 0.5:
+                    terrain = 'dirt'
+                elif value < 0.8:
+                    terrain = 'tall_grass'
+                else:
+                    terrain = 'path_rocks'
+                terrain_row.append({'terrain': terrain})
+            terrain_map.append(terrain_row)
+        self.terrain_map = terrain_map
+        print(f"Generated terrain map: {len(terrain_map)}x{len(terrain_map[0])}")
+
+
+
 def onAppStart(app):
     app.width = 800
     app.height = 600
@@ -53,7 +111,12 @@ def onAppStart(app):
     app.setMaxShapeCount(999999)
 
 def onMousePress(app, mouseX, mouseY):
-    app.map_editor.update_cell(mouseX, mouseY)
+    if (app.width // 2 - 100 <= mouseX <= app.width // 2 + 100 and 
+        app.height - 40 <= mouseY <= app.height - 10):
+        # If mouse is in the upscale button area
+        app.map_editor.upscale_grid()
+    else:
+        app.map_editor.update_cell(mouseX, mouseY)
 
 def onMouseDrag(app, mouseX, mouseY):
     app.map_editor.update_cell(mouseX, mouseY)
@@ -63,6 +126,10 @@ def onKeyPress(app, key):
         app.map_editor.adjust_opacity(increase=True)
     elif key == '-':  # Decrease brush opacity
         app.map_editor.adjust_opacity(increase=False)
+    elif key == 'down':
+        app.map_editor.brush_radius = max(1, app.map_editor.brush_radius - 1)
+    elif key == 'up':
+        app.map_editor.brush_radius = min(20, app.map_editor.brush_radius + 1)
 
 def redrawAll(app):
     drawRect(0, 0, app.width, app.height, fill='black')  # Background

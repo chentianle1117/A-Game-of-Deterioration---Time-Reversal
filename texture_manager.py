@@ -5,168 +5,111 @@ import time
 
 class TextureManagerOptimized:
     def __init__(self):
-        self.textures = {}  # Original PIL images
-        self.deteriorated_textures = {}  # Store deteriorated versions
-        self.cache = {}     # Resized CMUImage cache
-        self.last_update = time.time()
-        self.update_count = 0
-        self.deterioration_level = 0  # Track overall deterioration progress
-        
-        self.texture_mappings = {
+        self.textures = {}
+        self.deterioratedTextures = {}
+        self.cache = {}
+        self.lastUpdate = time.time()
+        self.updateCount = 0
+        self.deteriorationLevel = 0
+        self.textureMappings = {
             'water': 'WATER.png',
             'dirt': 'DIRT.png',
             'tall_grass': 'TALLGRASS.png',
             'path_rocks': 'PATHROCKS.png'
         }
-        self.load_textures()
+        self.loadTextures()
 
-    def load_textures(self):
-        """Load textures as PIL Images"""
-        texture_dir = self._find_texture_directory()
-        if not texture_dir:
-            print("[DEBUG] Texture directory not found.")
+    def loadTextures(self):
+        textureDir = self.findTextureDirectory()
+        if not textureDir:
             return
-
-        for terrain, filename in self.texture_mappings.items():
-            path = os.path.join(texture_dir, filename)
+        for terrain, filename in self.textureMappings.items():
+            path = os.path.join(textureDir, filename)
             try:
-                # Load and store as PIL Image
                 self.textures[terrain] = Image.open(path).convert('RGB')
-                # Initialize deteriorated textures with original images
-                self.deteriorated_textures[terrain] = self.textures[terrain].copy()
-                print(f"[DEBUG] Loaded texture for {terrain}")
+                self.deterioratedTextures[terrain] = self.textures[terrain].copy()
             except Exception as e:
-                print(f"[ERROR] Failed to load texture {filename}: {e}")
+                print(f"Failed to load texture {filename}: {e}")
 
-    def _find_texture_directory(self):
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        possible_paths = [
-            os.path.join(current_dir, 'assets', 'textures'),
-            os.path.join(current_dir, '..', 'assets', 'textures'),
+    def findTextureDirectory(self):
+        currentDir = os.path.dirname(os.path.abspath(__file__))
+        possiblePaths = [
+            os.path.join(currentDir, 'assets', 'textures'),
+            os.path.join(currentDir, '..', 'assets', 'textures'),
             'assets/textures'
         ]
-        for path in possible_paths:
+        for path in possiblePaths:
             if os.path.exists(path):
                 return os.path.abspath(path)
         return None
 
-    def update_deterioration(self):
-        """Apply progressive deterioration effects"""
-        current_time = time.time()
-        if current_time - self.last_update < 1.0:  # Check every second
+    def updateDeterioration(self):
+        currentTime = time.time()
+        if currentTime - self.lastUpdate < 1.0:
             return
-            
-        self.last_update = current_time
-        self.update_count += 1
-        
-        # Update every 5 counts
-        if self.update_count % 1 == 0:
-            print(f"[DEBUG] Deterioration update #{self.update_count}")
-            
-            # Increase deterioration level
-            self.deterioration_level = min(1.0, self.deterioration_level + 0.1)
-            print(f"[DEBUG] New deterioration level: {self.deterioration_level}")
-            
-            # Apply specific deterioration effects
+        self.lastUpdate = currentTime
+        self.updateCount += 1
+        if self.updateCount % 1 == 0:
+            self.deteriorationLevel = min(1.0, self.deteriorationLevel + 0.1)
             for terrain, original in self.textures.items():
                 try:
                     if terrain == "dirt":
-                        self.deteriorated_textures[terrain] = self._deteriorate_dirt(
-                            original, self.deterioration_level
-                        )
+                        self.deterioratedTextures[terrain] = self.deteriorateDirt(original, self.deteriorationLevel)
                     elif terrain == "water":
-                        self.deteriorated_textures[terrain] = self._deteriorate_water(
-                            original, self.deterioration_level
-                        )
+                        self.deterioratedTextures[terrain] = self.deteriorateWater(original, self.deteriorationLevel)
                     elif terrain == "tall_grass":
-                        self.deteriorated_textures[terrain] = self._deteriorate_tall_grass(
-                            original, self.deterioration_level
-                        )
+                        self.deterioratedTextures[terrain] = self.deteriorateTallGrass(original, self.deteriorationLevel)
                     elif terrain == "path_rocks":
-                        self.deteriorated_textures[terrain] = self._deteriorate_path_rocks(
-                            original, self.deterioration_level
-                        )
-                    print(f"[DEBUG] Updated {terrain} texture effects")
+                        self.deterioratedTextures[terrain] = self.deterioratePathRocks(original, self.deteriorationLevel)
                 except Exception as e:
-                    print(f"[ERROR] Failed to update {terrain}: {e}")
-            
-            # Clear cache to force texture updates
+                    print(f"Failed to update {terrain}: {e}")
             self.cache.clear()
 
-    def _deteriorate_dirt(self, image, level):
-        """Increase contrast and darken dirt progressively"""
-        # Start with a fresh copy
+    def deteriorateDirt(self, image, level):
         modified = image.copy()
-        
-        # Progressive contrast increase
-        contrast_factor = 1 + (0.2 * level)  # Up to 20% increase
+        contrastFactor = 1 + (0.2 * level)
         enhancer = ImageEnhance.Contrast(modified)
-        modified = enhancer.enhance(contrast_factor)
-        
-        # Progressive darkening
-        brightness_factor = 1 - (0.3 * level)  # Up to 30% darker
+        modified = enhancer.enhance(contrastFactor)
+        brightnessFactor = 1 - (0.3 * level)
         enhancer = ImageEnhance.Brightness(modified)
-        return enhancer.enhance(brightness_factor)
+        return enhancer.enhance(brightnessFactor)
 
-    def _deteriorate_water(self, image, level):
-        """Add increasing ripple effect for water"""
-        # Blur radius increases with deterioration
-        blur_radius = level * 2  # Up to 2 pixels blur
-        return image.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+    def deteriorateWater(self, image, level):
+        blurRadius = level * 2
+        return image.filter(ImageFilter.GaussianBlur(radius=blurRadius))
 
-    def _deteriorate_tall_grass(self, image, level):
-        """Progressive color fading for grass"""
+    def deteriorateTallGrass(self, image, level):
         modified = image.copy()
-        
-        # Progressive color saturation reduction
-        color_factor = 1 - (0.4 * level)  # Up to 40% color reduction
+        colorFactor = 1 - (0.4 * level)
         enhancer = ImageEnhance.Color(modified)
-        faded = enhancer.enhance(color_factor)
-        
-        # Progressive brightness reduction
-        brightness_factor = 1 - (0.2 * level)  # Up to 20% brightness reduction
+        faded = enhancer.enhance(colorFactor)
+        brightnessFactor = 1 - (0.2 * level)
         enhancer = ImageEnhance.Brightness(faded)
-        return enhancer.enhance(brightness_factor)
+        return enhancer.enhance(brightnessFactor)
 
-    def _deteriorate_path_rocks(self, image, level):
-        """Progressive darkening and smoothing for rocks"""
+    def deterioratePathRocks(self, image, level):
         modified = image.copy()
-        
-        # Progressive darkening
-        brightness_factor = 1 - (0.4 * level)  # Up to 40% darker
+        brightnessFactor = 1 - (0.4 * level)
         enhancer = ImageEnhance.Brightness(modified)
-        darkened = enhancer.enhance(brightness_factor)
-        
-        # Progressive smoothing
-        if level > 0.5:  # Only apply smoothing after 50% deterioration
+        darkened = enhancer.enhance(brightnessFactor)
+        if level > 0.5:
             return darkened.filter(ImageFilter.SMOOTH_MORE)
         return darkened
 
-    def draw_texture(self, terrain_type, width, height):
-        """Draw deteriorated texture with caching"""
-        if terrain_type not in self.deteriorated_textures:
+    def drawTexture(self, terrainType, width, height):
+        if terrainType not in self.deterioratedTextures:
+            print(f"Error: Unknown terrain type '{terrainType}'")
             return None
-            
-        # Cache key includes deterioration level for proper updates
-        cache_key = (terrain_type, width, height, self.deterioration_level)
-        
-        if cache_key not in self.cache:
+        cacheKey = (terrainType, width, height, self.deteriorationLevel)
+        if cacheKey not in self.cache:
             try:
-                # Get current deteriorated texture
-                current_image = self.deteriorated_textures[terrain_type]
-                # Resize for display
-                resized = current_image.resize((width, height), Image.LANCZOS)
-                # Convert to CMUImage
-                self.cache[cache_key] = CMUImage(resized)
-                print(f"[DEBUG] Created new CMUImage for {terrain_type} at level {self.deterioration_level:.2f}")
+                currentImage = self.deterioratedTextures[terrainType]
+                resized = currentImage.resize((width, height), Image.LANCZOS)
+                self.cache[cacheKey] = CMUImage(resized)
             except Exception as e:
-                print(f"[ERROR] Failed to create texture: {e}")
+                print(f"Failed to create texture for terrain '{terrainType}': {e}")
                 return None
-            
-        return self.cache[cache_key]
+        return self.cache[cacheKey]
 
-    def clear_cache(self):
-        """Clear the cache to force texture updates"""
-        cache_size = len(self.cache)
+    def clearCache(self):
         self.cache.clear()
-        print(f"[DEBUG] Cleared {cache_size} cached images")
