@@ -23,6 +23,16 @@ def gameKeyEvents(app, key):
         app.game.setZoom(app.game.zoomLevel * 1.2)
     elif key == '-':
         app.game.setZoom(app.game.zoomLevel / 1.2)
+    elif key == 'd':  # Toggle debug info
+        app.game.toggleDebugInfo()
+    elif key == 'm':  # Toggle minimap mode
+        print("M key pressed, game object:", app.game)
+        print("Available methods:", dir(app.game))
+        app.game.toggleMinimapMode()
+    elif key == ']':  # Increase character strength
+        app.game.character.setStrength(app.game.character.strength + 0.5)
+    elif key == '[':  # Decrease character strength
+        app.game.character.setStrength(app.game.character.strength - 0.5)
 
 def onKeyPress(app, key):
     if app.state == 'game':
@@ -43,6 +53,9 @@ def onKeyHold(app, keys):
             dy = -1
         if 'down' in keys:
             dy = 1
+        if 'shift' in keys:
+            dx *= 2
+            dy *= 2
         if dx or dy:
             if dx:
                 app.game.character.direction = 'left' if dx < 0 else 'right'
@@ -50,6 +63,7 @@ def onKeyHold(app, keys):
                 app.game.character.direction = 'up' if dy < 0 else 'down'
             app.game.character.move(dx, dy)
             app.game.updateCamera()
+        
 
 def onMousePress(app, mouseX, mouseY):
     if app.state == 'menu':
@@ -65,6 +79,10 @@ def onMousePress(app, mouseX, mouseY):
                 app.state = 'game'
         else:
             app.mapEditor.updateMousePos(mouseX, mouseY)
+
+def onStep(app):
+    if app.state == 'game':
+        app.game.update()
 
 def onMouseMove(app, mouseX, mouseY):
     if app.state == 'editor':
@@ -93,12 +111,13 @@ def redrawAll(app):
         if app.state == 'menu':
             app.menu.draw()
         elif app.state == 'game':
-            redrawGame(app)
+            redrawGame(app)  # Rendering happens here
         elif app.state == 'editor':
             app.mapEditor.draw()
     except Exception as e:
         print(f"Rendering error: {e}")
         drawLabel("Error in rendering", app.width // 2, app.height // 2, fill='red', bold=True, size=20)
+
 
 def main():
     runApp(width=800, height=600)

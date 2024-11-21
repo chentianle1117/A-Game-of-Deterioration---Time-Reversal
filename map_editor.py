@@ -17,7 +17,7 @@ class MapEditor:
             'minSize': 1,
             'maxSize': 10,
             'value': 1.0,
-            'opacity': 0.2
+            'opacity': 0.1
         }
         self.ui = {
             'saveButton': {
@@ -71,26 +71,35 @@ class MapEditor:
         terrainMap = []
         upscaled = np.repeat(np.repeat(self.grid, 4, axis=0), 4, axis=1)
         upscaled = upscaled[:self.finalHeight, :self.finalWidth]
-        for row in range(self.finalHeight-1):
+        for row in range(self.finalHeight - 1):
             terrainRow = []
-            for col in range(self.finalWidth-1):
+            for col in range(self.finalWidth - 1):
                 value = upscaled[row, col]
-                if value < 0.3:
-                    terrain = 'water'
+                if value < 0.2:
+                    terrain = "water"
+                elif value < 0.3:
+                    terrain = "sand"
+                elif value < 0.4:
+                    terrain = "woodtile"
                 elif value < 0.5:
-                    terrain = 'dirt'
-                elif value < 0.8:
-                    terrain = 'tall_grass'
+                    terrain = "dirt"
+                elif value < 0.6:
+                    terrain = "tall_grass" if np.random.rand() < 0.5 else "tiny_leaves"
+                elif value < 0.7:
+                    terrain = "brick"
+                elif value < 0.9:
+                    terrain = "pavement" if np.random.rand() < 0.5 else "path_rocks"
                 else:
-                    terrain = 'path_rocks'
+                    terrain = "snow"
                 terrainRow.append({
-                    'terrain': terrain,
-                    'texture': terrain,
-                    'explored': False
+                    "terrain": terrain,
+                    "texture": terrain,
+                    "explored": False,
                 })
             terrainMap.append(terrainRow)
         print(f"Generated terrain map: {len(terrainMap)}x{len(terrainMap[0])}")
         return terrainMap
+
 
     def updateMousePos(self, mouseX, mouseY):
         self.mouseX = mouseX
