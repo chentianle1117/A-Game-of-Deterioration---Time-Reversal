@@ -29,8 +29,8 @@ class MiniMap:
         }
         
         self.size = {
-            'width': 160,
-            'height': 120,
+            'width': 240,
+            'height': 180,
             'margin': 10
         }
         
@@ -205,8 +205,10 @@ class MiniMap:
                 ratio = self.cache.deteriorationColors[i, j]
                 
                 # Create smooth white-to-red gradient
-                red = 255
-                green = blue = int(255 * (1 - ratio))
+                red = int(255 * ratio)          # Red increases with deterioration
+                green = int(255 * (1 - ratio))  # Green decreases with deterioration
+                blue = 0                        # No blue component
+                
                 color = rgb(red, green, blue)
                 
                 drawRect(x, y, 

@@ -54,8 +54,8 @@ def onKeyHold(app, keys):
         if 'down' in keys:
             dy = 1
         if 'shift' in keys:
-            dx *= 2
-            dy *= 2
+            dx *= 4
+            dy *= 4
         if dx or dy:
             if dx:
                 app.game.character.direction = 'left' if dx < 0 else 'right'
