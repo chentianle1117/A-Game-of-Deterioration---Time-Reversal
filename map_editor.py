@@ -28,8 +28,9 @@ class MapEditor:
                 'height': 40
             },
             'tools': [
-                {'text': 'Black (Water/Low)', 'value': 0.0, 'key': 'b'},
-                {'text': 'White (Land/High)', 'value': 1.0, 'key': 'w'}
+                {'text': 'Water (Lowest)', 'value': 0.0, 'key': 'b'},
+                {'text': 'Dirt/Grass (Medium)', 'value': 0.5, 'key': 'm'},
+                {'text': 'High Ground', 'value': 1.0, 'key': 'w'}
             ]
         }
         self.mouseX = 0
@@ -46,7 +47,7 @@ class MapEditor:
         self.drawBrushPreview()
 
     def drawUI(self):
-        panelHeight = 150
+        panelHeight = 180  # Increased height for new tool
         drawRect(0, 0, 250, panelHeight, fill='black', opacity=50)
         y = 30
         for tool in self.ui['tools']:
@@ -54,11 +55,15 @@ class MapEditor:
             y += 25
         drawLabel(f"Brush Size: {self.brush['size']} ([ ])", 125, y, fill='white', bold=True)
         y += 25
-        drawLabel("Higher = Land, Lower = Water", 125, y, fill='white', bold=True)
+        drawLabel("Use medium elevation for", 125, y, fill='white', bold=True)
+        y += 20
+        drawLabel("best tree growth", 125, y, fill='white', bold=True)
+        
         btn = self.ui['saveButton']
-        drawRect(btn['x'] - btn['width']//2, btn['y'] - btn['height']//2, btn['width'], btn['height'], fill='darkGray', border='white')
+        drawRect(btn['x'] - btn['width']//2, btn['y'] - btn['height']//2, 
+                btn['width'], btn['height'], fill='darkGray', border='white')
         drawLabel(btn['text'], btn['x'], btn['y'], fill='white', bold=True)
-
+        
     def drawBrushPreview(self):
         radius = self.brush['size'] * max(self.cellWidth, self.cellHeight)
         drawCircle(self.mouseX, self.mouseY, radius, fill=None, border='white', borderWidth=2)
@@ -71,32 +76,79 @@ class MapEditor:
         terrainMap = []
         upscaled = np.repeat(np.repeat(self.grid, 4, axis=0), 4, axis=1)
         upscaled = upscaled[:self.finalHeight, :self.finalWidth]
+        
+        # Add some noise for variation
+        noise = np.random.uniform(-0.05, 0.05, upscaled.shape)
+        upscaled += noise
+        np.clip(upscaled, 0, 1, out=upscaled)
+
         for row in range(self.finalHeight - 1):
             terrainRow = []
             for col in range(self.finalWidth - 1):
                 value = upscaled[row, col]
+                
+                # Get surrounding values for smoother transitions
+                surroundingVals = []
+                for dr in [-1, 0, 1]:
+                    for dc in [-1, 0, 1]:
+                        r, c = row + dr, col + dc
+                        if (0 <= r < self.finalHeight and 
+                            0 <= c < self.finalWidth):
+                            surroundingVals.append(upscaled[r, c])
+                avgVal = sum(surroundingVals) / len(surroundingVals)
+                
+                # Terrain type decision with more natural distribution
                 if value < 0.2:
                     terrain = "water"
                 elif value < 0.3:
-                    terrain = "sand"
-                elif value < 0.4:
-                    terrain = "woodtile"
-                elif value < 0.5:
-                    terrain = "dirt"
-                elif value < 0.6:
-                    terrain = "tall_grass" if np.random.rand() < 0.5 else "tiny_leaves"
-                elif value < 0.7:
-                    terrain = "brick"
-                elif value < 0.9:
-                    terrain = "pavement" if np.random.rand() < 0.5 else "path_rocks"
+                    # Transition zone between water and land
+                    terrain = "sand" if np.random.rand() < 0.7 else "dirt"
+                elif value < 0.8:
+                    # Main land area with varied vegetation
+                    rand = np.random.rand()
+                    if avgVal < 0.5:  # Lower elevation
+                        if rand < 0.4:
+                            terrain = "dirt"
+                        elif rand < 0.8:
+                            terrain = "tall_grass"
+                        else:
+                            terrain = "tiny_leaves"
+                    else:  # Higher elevation
+                        if rand < 0.3:
+                            terrain = "dirt"
+                        elif rand < 0.7:
+                            terrain = "tall_grass"
+                        else:
+                            terrain = "path_rocks"
+                elif value < 0.95:
+                    # Higher ground
+                    rand = np.random.rand()
+                    if rand < 0.6:
+                        terrain = "path_rocks"
+                    elif rand < 0.8:
+                        terrain = "brick"
+                    else:
+                        terrain = "dirt"  # Some dirt patches in high ground
                 else:
+                    # Mountain tops
                     terrain = "snow"
+
+                # Add variation in growth potential for trees
+                growthPotential = 0.5
+                if terrain in ["dirt", "tall_grass", "tiny_leaves"]:
+                    # Calculate growth potential based on elevation and surroundings
+                    growthPotential = min(1.0, max(0.2, 
+                        0.5 + (avgVal - 0.5) * 0.5 +  # Elevation factor
+                        np.random.uniform(-0.1, 0.1)))  # Random variation
+                
                 terrainRow.append({
                     "terrain": terrain,
                     "texture": terrain,
                     "explored": False,
+                    "growthPotential": growthPotential  # Add growth potential
                 })
             terrainMap.append(terrainRow)
+
         print(f"Generated terrain map: {len(terrainMap)}x{len(terrainMap[0])}")
         return terrainMap
 
