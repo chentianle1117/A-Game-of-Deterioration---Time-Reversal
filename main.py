@@ -26,13 +26,17 @@ def gameKeyEvents(app, key):
     elif key == 'd':  # Toggle debug info
         app.game.toggleDebugInfo()
     elif key == 'm':  # Toggle minimap mode
-        print("M key pressed, game object:", app.game)
-        print("Available methods:", dir(app.game))
         app.game.toggleMinimapMode()
     elif key == ']':  # Increase character strength
         app.game.character.setStrength(app.game.character.strength + 0.5)
     elif key == '[':  # Decrease character strength
         app.game.character.setStrength(app.game.character.strength - 0.5)
+    elif key == 't':  # Adjust tree density up
+        app.game.treeDensity = min(1.0, app.game.treeDensity + 0.05)
+        app.game.placeTrees()
+    elif key == 'g':  # Adjust tree density down
+        app.game.treeDensity = max(0.0, app.game.treeDensity - 0.05)
+        app.game.placeTrees()
 
 def onKeyPress(app, key):
     if app.state == 'game':
@@ -63,7 +67,6 @@ def onKeyHold(app, keys):
                 app.game.character.direction = 'up' if dy < 0 else 'down'
             app.game.character.move(dx, dy)
             app.game.updateCamera()
-        
 
 def onMousePress(app, mouseX, mouseY):
     if app.state == 'menu':
@@ -94,30 +97,20 @@ def onMouseDrag(app, mouseX, mouseY):
         app.mapEditor.paint(mouseX, mouseY)
 
 def redrawGame(app):
-    drawRect(0, 0, app.width, app.height, fill='white')
-    startRow, startCol, endRow, endCol = app.game.getVisibleCells()
-    for row in range(startRow, endRow):
-        for col in range(startCol, endCol):
-            if 0 <= row < app.game.worldHeight and 0 <= col < app.game.worldWidth:
-                app.game.drawCell(row, col)
-    charX, charY = app.game.character.getPosition()
-    screenX, screenY = app.game.worldToScreen(charX, charY)
-    app.game.character.draw(screenX, screenY, app.game.zoomLevel)
-    app.game.drawUI()
-    app.game.drawMiniMap()
+    app.game.redrawGame()  # Use Game class's redrawGame method directly
 
 def redrawAll(app):
     try:
         if app.state == 'menu':
             app.menu.draw()
         elif app.state == 'game':
-            redrawGame(app)  # Rendering happens here
+            redrawGame(app)
         elif app.state == 'editor':
             app.mapEditor.draw()
     except Exception as e:
         print(f"Rendering error: {e}")
-        drawLabel("Error in rendering", app.width // 2, app.height // 2, fill='red', bold=True, size=20)
-
+        drawLabel("Error in rendering", app.width // 2, app.height // 2, 
+                 fill='red', bold=True, size=20)
 
 def main():
     runApp(width=800, height=600)
