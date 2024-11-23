@@ -4,7 +4,7 @@ from texture_manager import TextureManagerOptimized
 from character import Character
 from mini_map import MiniMap
 from map_editor import MapEditor
-from tree import Tree  # Import the Tree class
+from tree import Tree
 
 class Game:
     def __init__(self, customMap=None):
@@ -26,43 +26,42 @@ class Game:
             'path_rocks': 'gray'
         }
         self.textureManager = TextureManagerOptimized()
+        
         if customMap is None:
             raise Exception("Game must be initialized with a custom map")
         self.grid = customMap
-        self.character = Character(self.worldWidth, self.worldHeight, self.baseCellWidth, self.baseCellHeight)
+        
+        self.character = Character(self.worldWidth, self.worldHeight, 
+                                 self.baseCellWidth, self.baseCellHeight)
+        
         self.miniMapState = 'OFF'
         self.miniMap = None
         self.setMiniMap()
         self.updateCamera()
         
         # Tree system
-        self.treeDensity = 0.1  # Adjust this value to control tree density
+        self.treeDensity = 0.1  # Initial tree density
         self.trees = []
         self.showDebugInfo = True
         self.placeTrees()  # Initialize trees
 
     def placeTrees(self):
-        """Populate the world with trees based on eligible terrain"""
-        self.trees = []  # Clear existing trees
+        """Only create tree instances without generating them"""
+        self.trees = []
         eligibleTerrain = {'dirt', 'tiny_leaves', 'tall_grass'}
         
-        # Get actual dimensions of the grid
-        gridHeight = len(self.grid)
-        gridWidth = len(self.grid[0]) if gridHeight > 0 else 0
-        
-        for row in range(gridHeight):
-            for col in range(gridWidth):
+        for row in range(self.worldHeight):
+            for col in range(self.worldWidth):
                 try:
                     cellData = self.grid[row][col]
                     if cellData['terrain'] in eligibleTerrain:
                         if random.random() < self.treeDensity:
-                            # Convert grid position to world coordinates
-                            worldX = col * self.baseCellWidth + self.baseCellWidth // 2
-                            worldY = row * self.baseCellHeight + self.baseCellHeight // 2
-                            self.trees.append(Tree(worldX, worldY))
-                except (IndexError, KeyError, TypeError) as e:
+                            worldX = (col + 0.5) * self.baseCellWidth
+                            worldY = (row + 0.5) * self.baseCellHeight
+                            tree = Tree(worldX, worldY)
+                            self.trees.append((tree, (row, col)))  # Store grid position with tree
+                except Exception as e:
                     print(f"Error placing tree at ({row}, {col}): {e}")
-                    continue
 
     def getSurroundingTerrainHealth(self, worldX, worldY):
         """Get health of surrounding terrain for a tree"""
@@ -129,36 +128,50 @@ class Game:
                              bold=True)
 
     def redrawGame(self):
-        drawRect(0, 0, self.windowWidth, self.windowHeight, fill='white')
         try:
-            # Draw terrain
+            # Get visible area
             startRow, startCol, endRow, endCol = self.getVisibleCells()
+            
+            # Draw terrain
             for row in range(startRow, endRow):
                 for col in range(startCol, endCol):
                     if 0 <= row < self.worldHeight and 0 <= col < self.worldWidth:
                         self.drawCell(row, col)
+            
+            # Update and draw only visible trees
+            visibleTrees = []
+            for tree, (treeRow, treeCol) in self.trees:
+                if (startCol-1 <= treeCol <= endCol+1 and 
+                    startRow-1 <= treeRow <= endRow+1):
+                    # Generate tree if needed
+                    tree.ensureGenerated()
+                    
+                    # Update tree with surrounding terrain health
+                    if tree.needsUpdate:
+                        surroundingRatios = self.getSurroundingTerrainHealth(
+                            tree.baseX, tree.baseY)
+                        tree.updateTreeLife(surroundingRatios)
+                        tree.needsUpdate = False
+                    
+                    screenX, screenY = self.worldToScreen(tree.baseX, tree.baseY)
+                    visibleTrees.append((tree, screenX, screenY))
+                else:
+                    # Tree is out of view, mark it for update when it comes back
+                    tree.needsUpdate = True
+            
+            # Draw visible trees
+            for tree, screenX, screenY in sorted(visibleTrees, key=lambda x: x[2]):
+                tree.drawTree(self)
 
-            # Draw trees (after terrain, before character)
-            for tree in self.trees:
-                screenX, screenY = self.worldToScreen(tree.baseX, tree.baseY)
-                # Only draw if tree is visible on screen
-                if (-100 < screenX < self.windowWidth + 100 and 
-                    -100 < screenY < self.windowHeight + 100):
-                    tree.drawTree(None)  # None because we don't use context
-
-            # Draw character
+            # Draw character and UI
             charX, charY = self.character.getPosition()
             screenX, screenY = self.worldToScreen(charX, charY)
             self.character.draw(screenX, screenY, self.zoomLevel)
-
-            # Draw UI elements
             self.drawUI()
             self.drawMiniMap()
 
         except Exception as e:
             print(f"Error in redrawGame: {str(e)}")
-            drawLabel("Error in rendering", self.windowWidth // 2, self.windowHeight // 2, 
-                     fill='red', bold=True, size=20)
 
     def updateCamera(self):
         charX, charY = self.character.getPosition()
@@ -170,7 +183,7 @@ class Game:
         self.updateCamera()
 
     def drawUI(self):
-        drawRect(0, 0, 250, 140, fill='black', opacity=50)
+        drawRect(0, 0, 250, 150, fill='black', opacity=50)
         
         charX, charY = self.character.getPosition()
         currentCell = self.character.getCurrentCell()
@@ -183,6 +196,7 @@ class Game:
                 f'World: {self.worldWidth}x{self.worldHeight}',
                 f'Zoom: {self.zoomLevel:.2f}x',
                 f'Strength: {self.character.strength:.1f}',
+                f'Trees: {len(self.trees)}',
                 f'Restoration Radius: {self.character.getRestorationRadius():.0f}px'
             ]
             for i, text in enumerate(labels):
@@ -197,14 +211,14 @@ class Game:
             self.miniMap.draw()
 
     def toggleMinimapMode(self):
+        print("Toggling minimap mode from:", self.miniMapState)  # Debug print
         if self.miniMapState == 'OFF':
             self.miniMapState = 'TERRAIN'
-            if self.miniMap is None:
-                self.setMiniMap()
         elif self.miniMapState == 'TERRAIN':
             self.miniMapState = 'DETERIORATION'
         else:
             self.miniMapState = 'OFF'
+        print("New minimap mode:", self.miniMapState)  # Debug print
 
     def setMiniMap(self, minimap=None):
         if minimap is None:
@@ -228,21 +242,29 @@ class Game:
             self.placeTrees()  # Regenerate trees when grid changes
 
     def worldToScreen(self, worldX, worldY):
+        """Convert world coordinates to screen coordinates"""
         screenX = (worldX - self.cameraX) * self.zoomLevel
         screenY = (worldY - self.cameraY) * self.zoomLevel
         return screenX, screenY
+
+    def screenToWorld(self, screenX, screenY):
+        """Convert screen coordinates to world coordinates"""
+        worldX = (screenX / self.zoomLevel) + self.cameraX
+        worldY = (screenY / self.zoomLevel) + self.cameraY
+        return worldX, worldY
 
     def toggleDebugInfo(self):
         self.showDebugInfo = not self.showDebugInfo
 
     def update(self):
         """Update game state including texture deterioration and trees"""
-        # Update terrain
-        gridHeight = len(self.grid)
-        gridWidth = len(self.grid[0]) if gridHeight > 0 else 0
+        # Get visible area first
+        startRow, startCol, endRow, endCol = self.getVisibleCells()
         
-        for row in range(gridHeight):
-            for col in range(gridWidth):
+        # Only update terrain in and around visible area
+        padding = 2  # Add some padding to avoid edge effects
+        for row in range(max(0, startRow-padding), min(self.worldHeight, endRow+padding)):
+            for col in range(max(0, startCol-padding), min(self.worldWidth, endCol+padding)):
                 try:
                     cellData = self.grid[row][col]
                     self.textureManager.initializeCellState(row, col, cellData['terrain'])
@@ -252,7 +274,43 @@ class Game:
         # Update terrain deterioration
         self.textureManager.updateDeterioration(self.character)
         
-        # Update trees
+        # Only update trees in visible area
+        for tree, (treeRow, treeCol) in self.trees:  # Trees now stored with their grid positions
+            if (startCol-1 <= treeCol <= endCol+1 and 
+                startRow-1 <= treeRow <= endRow+1):
+                # Generate tree if it hasn't been generated yet
+                if not tree.isGenerated:
+                    tree.ensureGenerated()
+                
+                # Update tree with surrounding terrain health
+                surroundingRatios = self.getSurroundingTerrainHealth(tree.baseX, tree.baseY)
+                tree.updateTreeLife(surroundingRatios)
+                tree.needsUpdate = False
+            else:
+                # Tree is out of view, mark it for update when it comes back
+                tree.needsUpdate = True
+                # Optionally, we could also clear the tree's generated data to save memory
+                tree.isGenerated = False
+                tree.branches = []
+                tree.leaves = []
+
+    def debugTrees(self):
+        """Debug tree positions and visibility"""
+        startRow, startCol, endRow, endCol = self.getVisibleCells()
+        print(f"Visible area: ({startCol},{startRow}) to ({endCol},{endRow})")
+        print(f"Camera position: ({self.cameraX}, {self.cameraY})")
+        print(f"Total trees: {len(self.trees)}")
+        
+        visibleTrees = 0
         for tree in self.trees:
-            surroundingRatios = self.getSurroundingTerrainHealth(tree.baseX, tree.baseY)
-            tree.updateTreeLife(surroundingRatios)
+            # Get tree's grid position
+            treeCol = int(tree.baseX / self.baseCellWidth)
+            treeRow = int(tree.baseY / self.baseCellHeight)
+            screenX, screenY = self.worldToScreen(tree.baseX, tree.baseY)
+            
+            if (startCol-1 <= treeCol <= endCol+1 and 
+                startRow-1 <= treeRow <= endRow+1):
+                print(f"Tree at grid({treeRow},{treeCol}) world({tree.baseX},{tree.baseY}) screen({screenX},{screenY})")
+                visibleTrees += 1
+        
+        print(f"Visible trees: {visibleTrees}")

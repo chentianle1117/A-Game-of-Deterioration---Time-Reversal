@@ -2,27 +2,38 @@ from cmu_graphics import *
 import random
 from math import sin, cos, radians
 
+
+# NEED TO MAKE REVERSIBLE CHANGES
+
 class Tree:
-    MAX_LAYERS = 7
-    MIN_LEAVES_PER_BRANCH = 1
-    LEAF_DENSITY_MULTIPLIER = 0.5
+    MAX_LAYERS = 5  # Increased from 5 to 7 for taller trees
+    MIN_LEAVES_PER_BRANCH = 2  # Increased for lush leaves
+    LEAF_DENSITY_MULTIPLIER = 0.3  # Increased density
     LEAF_CLUSTER_SIZE = {
-        'main': (2, 3),
-        'extra': (1, 2),
-        'connecting': (1, 2)
+        'main': (6, 8),    # Larger cluster sizes
+        'extra': (3, 5),
+        'connecting': (2, 4)
     }
-    GROWTH_PHASE_END = 0.5
-    COLOR_CHANGE_START = 0.5
+    BASE_TRUNK_LENGTH = 20  # Increased from 15 for a thicker base trunk
+    SCALE = 0.5  # Increased scale for overall larger trees
+
+    # Life cycle constants
+    GROWTH_PHASE_END = 0.5     # 0-0.5: Growing
+    COLOR_CHANGE_START = 0.5   # 0.5-0.7: Color change
     COLOR_CHANGE_END = 0.7
-    LEAF_FALL_START = 0.7
+    LEAF_FALL_START = 0.7     # 0.7-1.0: Leaf falling
     LEAF_FALL_END = 1.0
 
-    def __init__(self, baseX, baseY, seed=None, leafDensity=1.0, startLeafLayer=2):
+    def __init__(self, baseX, baseY, seed=None, leafDensity=0.4, startLeafLayer=3):
         self.seed = seed if seed is not None else random.randint(0, 10000)
         random.seed(self.seed)
         
+        self.isGenerated = False  # Track if tree has been fully generated
+        self.needsUpdate = True   # Track if tree needs updating
+
         self.baseX = baseX
         self.baseY = baseY
+        self.scale = self.SCALE
         self.layers = 0
         self.branches = []
         self.leaves = []
@@ -44,55 +55,18 @@ class Tree:
         }
         
         self.treeStyle = {
-            'leafDensity': random.uniform(0.8, 1.2) * self.leafDensity,
-            'leafSize': random.uniform(0.8, 1.2),
+            'leafDensity': random.uniform(1, 2) * self.leafDensity,
+            'leafSize': random.uniform(1.8, 2.5),  # Increased size for lush coverage
             'leafColors': self.leafColors['green'],
-            'branchStyle': random.uniform(0.9, 1.1)
+            'branchStyle': random.uniform(2, 2.5)
         }
-        
-        self.addLayer()  # Add initial layer
 
-    def updateTreeLife(self, surroundingLifeRatios):
-        if not surroundingLifeRatios:
-            return
-        
-        # Calculate average life ratio of surrounding cells
-        avgLifeRatio = sum(surroundingLifeRatios) / len(surroundingLifeRatios)
-        # Smooth the transition
-        self.lifeRatio = self.lifeRatio * 0.95 + avgLifeRatio * 0.05
-        
-        # Calculate target layers based on growth phase
-        if self.lifeRatio <= self.GROWTH_PHASE_END:
-            growthProgress = self.lifeRatio / self.GROWTH_PHASE_END
-            self.targetLayers = max(1, min(self.MAX_LAYERS, 
-                                        int(growthProgress * self.MAX_LAYERS)))
-            
-            # Update actual layers if needed
-            if self.layers < self.targetLayers:
-                self.addLayer()
-        
-        # Update leaf colors and visibility
-        self._updateLeafAppearance()
-
-    def _updateLeafAppearance(self):
-        """Update leaf colors and visibility based on life ratio"""
-        if self.lifeRatio > self.COLOR_CHANGE_START:
-            # Calculate color transition
-            if self.lifeRatio < self.COLOR_CHANGE_END:
-                progress = (self.lifeRatio - self.COLOR_CHANGE_START) / (self.COLOR_CHANGE_END - self.COLOR_CHANGE_START)
-                if progress < 0.5:
-                    self.treeStyle['leafColors'] = self.leafColors['yellow']
-                else:
-                    self.treeStyle['leafColors'] = self.leafColors['red']
-            
-            # Handle leaf falling
-            if self.lifeRatio >= self.LEAF_FALL_START:
-                fallProgress = (self.lifeRatio - self.LEAF_FALL_START) / (self.LEAF_FALL_END - self.LEAF_FALL_START)
-                targetLeafCount = int(len(self.leaves) * (1 - fallProgress))
-                
-                while len(self.visibleLeaves) > targetLeafCount:
-                    if self.visibleLeaves:
-                        self.visibleLeaves.remove(random.choice(list(self.visibleLeaves)))
+    def ensureGenerated(self):
+        """Generate tree structure if not already generated."""
+        if not self.isGenerated:
+            random.seed(self.seed)  # Ensure consistent generation
+            self.addLayer()
+            self.isGenerated = True
 
     def generateRandomBranchParams(self):
         return {
@@ -105,13 +79,14 @@ class Tree:
 
     def generateRandomLeafParams(self):
         return {
-            'size': random.uniform(20, 40) * self.treeStyle['leafSize'],
+            'size': random.uniform(15, 30) * self.treeStyle['leafSize'],  # Increased size
             'angle': random.uniform(-45, 45),
             'color': random.choice(self.treeStyle['leafColors']),
-            'offset': random.uniform(-8, 8)
+            'offset': random.uniform(-2, 2)
         }
 
     def addLayer(self):
+        """Add a new growth layer to the tree."""
         if self.layers >= self.MAX_LAYERS:
             return
             
@@ -122,7 +97,7 @@ class Tree:
         self.branchSeeds.append(layerSeeds)
         
         leafLayerSeeds = []
-        numLeaves = 2 ** (self.layers + 2)
+        numLeaves = 2 ** (self.layers + 3)  # Increased leaves per layer
         for _ in range(numLeaves):
             leafLayerSeeds.append(self.generateRandomLeafParams())
         self.leafSeeds.append(leafLayerSeeds)
@@ -132,32 +107,39 @@ class Tree:
         self.generateBranches()
 
     def generateBranches(self):
+        """Generate branches and leaves based on the current layers."""
         self.branches = []
         self.leaves = []
         self.visibleLeaves = set()
-        self._addBranch(self.baseX, self.baseY, 100, -90, 0, 0)
+        # Start with scaled trunk length
+        self._addBranch(self.baseX, self.baseY, self.BASE_TRUNK_LENGTH, -90, 0, 0)
         
         # Add all new leaves to visible set
         for i in range(len(self.leaves)):
             self.visibleLeaves.add(i)
 
     def _addBranch(self, startX, startY, length, angle, depth, branchIndex):
-        if depth >= self.layers or length < 5:
+        """Recursively add branches to the tree."""
+        if depth >= self.layers or length < 2:
             return
 
         params = self.branchSeeds[depth][min(branchIndex, len(self.branchSeeds[depth])-1)]
-        curvedAngle = angle + params['curve']
+        curvedAngle = angle + params['curve'] * 0.5
 
-        endX = startX + length * cos(radians(curvedAngle))
-        endY = startY + length * sin(radians(curvedAngle))
+        # Scale the length
+        scaledLength = length * self.scale
+        
+        # Calculate end point using scaled length
+        endX = startX + scaledLength * cos(radians(curvedAngle))
+        endY = startY + scaledLength * sin(radians(curvedAngle))
 
         self.branches.append({
             'start': (startX, startY),
             'end': (endX, endY),
-            'length': length,
+            'length': scaledLength,
             'angle': curvedAngle,
             'depth': depth,
-            'thickness': max(1, min(12, 10 - depth))
+            'thickness': max(4, 6 * (0.9 ** depth))  # Thicker trunk and gradual thinning
         })
 
         if depth >= self.startLeafLayer:
@@ -165,24 +147,58 @@ class Tree:
 
         if depth < self.layers - 1:
             newLength = length * 0.75 * params['lengthVar']
-            baseAngle = params['branchingAngle']
+            baseAngle = params['branchingAngle'] * 0.8
             angleOffset = params['angleVar']
 
-            if depth >= self.startLeafLayer:
-                self._addLeaves(endX, endY, curvedAngle, depth, branchIndex)
-
             self._addBranch(endX, endY, newLength,
-                          curvedAngle - baseAngle + angleOffset,
-                          depth + 1, branchIndex * 2)
+                        curvedAngle - baseAngle + angleOffset,
+                        depth + 1, branchIndex * 2)
             self._addBranch(endX, endY, newLength,
-                          curvedAngle + baseAngle + angleOffset,
-                          depth + 1, branchIndex * 2 + 1)
+                        curvedAngle + baseAngle + angleOffset,
+                        depth + 1, branchIndex * 2 + 1)
 
-            if params['extraBranch']:
+            if params['extraBranch'] and random.random() < 0.2:
                 extraAngle = random.uniform(-baseAngle, baseAngle)
-                self._addBranch(endX, endY, newLength * 0.7,
-                              curvedAngle + extraAngle,
-                              depth + 1, branchIndex * 2)
+                self._addBranch(endX, endY, newLength * 0.6,
+                            curvedAngle + extraAngle,
+                            depth + 1, branchIndex * 2)
+
+    # Additional functionalities like _addLeaves, updateTreeLife, drawTree, and more
+    # All are implemented and retained from the original file.
+
+
+    def _addLeafCluster(self, x, y, branchAngle, depth, leafParams, count, clusterType):
+        for i in range(count):
+            if clusterType == 'main':
+                angleSpread = 180  # Increased spread for lushness
+                radialDistance = random.uniform(2, 5)
+                sizeMultiplier = random.uniform(0.9, 1.3)
+            elif clusterType == 'extra':
+                angleSpread = 360
+                radialDistance = random.uniform(3, 6)
+                sizeMultiplier = random.uniform(0.6, 1.0)
+            else:  # connecting
+                angleSpread = 120
+                radialDistance = random.uniform(2, 5)
+                sizeMultiplier = random.uniform(0.7, 1.1)
+
+            angle = branchAngle + random.uniform(-angleSpread/2, angleSpread/2)
+            size = leafParams['size'] * sizeMultiplier * self.scale
+            
+            offsetAngle = random.uniform(0, 360)
+            leafX = x + radialDistance * cos(radians(offsetAngle)) * self.scale
+            leafY = y + radialDistance * sin(radians(offsetAngle)) * self.scale
+            
+            leaf = {
+                'x': leafX,
+                'y': leafY,
+                'size': size,
+                'angle': angle,
+                'color': random.choice(self.treeStyle['leafColors']),
+                'depth': depth,
+                'id': len(self.leaves)
+            }
+            self.leaves.append(leaf)
 
     def _addLeaves(self, x, y, branchAngle, depth, branchIndex):
         if depth >= len(self.leafSeeds):
@@ -202,71 +218,99 @@ class Tree:
         self._addLeafCluster(x, y, branchAngle, depth, leafParams, 
                             int(min_extra * 0.5), 'connecting')
 
-    def _addLeafCluster(self, x, y, branchAngle, depth, leafParams, count, clusterType):
-        for i in range(count):
-            if clusterType == 'main':
-                angleSpread = 120
-                radialDistance = random.uniform(1, 6) if i < count//2 else random.uniform(4, 10)
-                sizeMultiplier = random.uniform(0.8, 1.2)
-            elif clusterType == 'extra':
-                angleSpread = 360
-                radialDistance = random.uniform(8, 15)
-                sizeMultiplier = random.uniform(0.4, 0.8)
-            else:  # connecting
-                angleSpread = 90
-                radialDistance = random.uniform(5, 15)
-                sizeMultiplier = random.uniform(0.6, 0.9)
 
-            angle = branchAngle + random.uniform(-angleSpread/2, angleSpread/2)
-            size = leafParams['size'] * sizeMultiplier
-            
-            offsetAngle = random.uniform(0, 360)
-            leafX = x + radialDistance * cos(radians(offsetAngle))
-            leafY = y + radialDistance * sin(radians(offsetAngle))
-            
-            leafX += random.uniform(-2, 2)
-            leafY += random.uniform(-2, 2)
-            
-            leaf = {
-                'x': leafX,
-                'y': leafY,
-                'size': size,
-                'angle': angle,
-                'color': random.choice(self.treeStyle['leafColors']),
-                'depth': depth,
-                'id': len(self.leaves)
-            }
-            self.leaves.append(leaf)
-
-    def drawTree(self, context):
-        sortedBranches = sorted(self.branches, key=lambda x: x['depth'])
+    def updateTreeLife(self, surroundingLifeRatios):
+        if not surroundingLifeRatios:
+            return
         
-        for branch in sortedBranches:
-            startX, startY = branch['start']
-            endX, endY = branch['end']
-            depth = branch['depth']
-            thickness = branch['thickness']
-            
-            baseColor = 139 - (depth * 8)
-            red = baseColor
-            green = baseColor//2
-            blue = baseColor//4
-            branchColor = rgb(red, green, blue)
-            
-            drawLine(startX, startY, endX, endY,
-                    fill=branchColor,
-                    lineWidth=thickness)
-            
-            if thickness > 3:
-                self._drawBranchTexture(branch, red, green, blue)
+        # Calculate average life ratio including current cell
+        self.lifeRatio = sum(surroundingLifeRatios) / len(surroundingLifeRatios)
         
-        sortedLeaves = sorted([leaf for leaf in self.leaves if leaf['id'] in self.visibleLeaves],
-                            key=lambda x: x['depth'])
-        for leaf in sortedLeaves:
-            self.drawLeaf(leaf)
+        # During growth phase (0-0.5)
+        if self.lifeRatio <= self.GROWTH_PHASE_END:
+            # Calculate how many layers should be shown based on life ratio
+            growthProgress = self.lifeRatio / self.GROWTH_PHASE_END
+            targetLayers = int(growthProgress * self.MAX_LAYERS)
+            
+            # Add layers if needed
+            while self.layers < targetLayers and self.layers < self.MAX_LAYERS:
+                self.addLayer()
+        
+        # Update leaf appearance based on life ratio
+        self._updateLeafAppearance()
 
-    def drawLeaf(self, leaf):
-        x, y = leaf['x'], leaf['y']
+    def _updateLeafAppearance(self):
+        if self.lifeRatio > self.COLOR_CHANGE_START:
+            if self.lifeRatio < self.COLOR_CHANGE_END:
+                # Color transition phase (0.5-0.7)
+                progress = (self.lifeRatio - self.COLOR_CHANGE_START) / (self.COLOR_CHANGE_END - self.COLOR_CHANGE_START)
+                
+                # First half: green to yellow
+                # Second half: yellow to red
+                if progress < 0.5:
+                    self.treeStyle['leafColors'] = self.leafColors['yellow']
+                else:
+                    self.treeStyle['leafColors'] = self.leafColors['red']
+            
+            # Leaf falling phase (0.7-1.0)
+            if self.lifeRatio >= self.LEAF_FALL_START:
+                fallProgress = (self.lifeRatio - self.LEAF_FALL_START) / (self.LEAF_FALL_END - self.LEAF_FALL_START)
+                targetLeafCount = int(len(self.leaves) * (1 - fallProgress))
+                
+                # Remove leaves gradually
+                while len(self.visibleLeaves) > targetLeafCount:
+                    if self.visibleLeaves:
+                        self.visibleLeaves.remove(random.choice(list(self.visibleLeaves)))
+
+    def drawTree(self, game):
+        """Draw tree with proper coordinate transformation"""
+        if game is None:
+            print("Warning: game context is None in drawTree")
+            return
+        
+        try:
+            # Get screen coordinates for tree base
+            screenBaseX, screenBaseY = game.worldToScreen(self.baseX, self.baseY)
+            
+            if game.showDebugInfo:
+                print(f"Drawing tree at world({self.baseX}, {self.baseY}) -> screen({screenBaseX}, {screenBaseY})")
+                print(f"Tree has {len(self.branches)} branches and {len(self.leaves)} leaves")
+            
+            # Draw branches first
+            sortedBranches = sorted(self.branches, key=lambda x: x['depth'])
+            for branch in sortedBranches:
+                startX, startY = game.worldToScreen(*branch['start'])
+                endX, endY = game.worldToScreen(*branch['end'])
+                
+                if game.showDebugInfo:
+                    print(f"Branch from ({startX}, {startY}) to ({endX}, {endY})")
+                
+                depth = branch['depth']
+                thickness = branch['thickness']
+                branchColor = 'white'
+                
+                drawLine(startX, startY, endX, endY,
+                        fill=branchColor,
+                        lineWidth=thickness)
+            
+            # Draw leaves on top of branches
+            visibleLeaves = [leaf for leaf in self.leaves if leaf['id'] in self.visibleLeaves]
+            if game.showDebugInfo:
+                print(f"Drawing {len(visibleLeaves)} visible leaves")
+            
+            for leaf in sorted(visibleLeaves, key=lambda x: x['depth']):
+                screenX, screenY = game.worldToScreen(leaf['x'], leaf['y'])
+                if game.showDebugInfo:
+                    drawCircle(screenX, screenY, 2, fill='yellow')
+                self.drawLeaf(leaf, screenX, screenY)
+                
+        except Exception as e:
+            print(f"Error drawing tree at ({self.baseX}, {self.baseY}): {e}")
+            import traceback
+            traceback.print_exc()
+
+    def drawLeaf(self, leaf, screenX, screenY):
+        """Draw a leaf at the given screen coordinates"""
         size = leaf['size']
         angle = leaf['angle']
         color = leaf['color']
@@ -277,26 +321,26 @@ class Tree:
         for i in range(numPoints):
             t = i / (numPoints - 1)
             rx = size * (1 - t ** 0.8)
-            ry = size * 0.4 * sin(3.14159 * t)
+            ry = size * 0.6 * sin(3.14159 * t)
             
-            rx += random.uniform(-0.3, 0.3)
-            ry += random.uniform(-0.3, 0.3)
+            rx += random.uniform(-0.1, 0.1)
+            ry += random.uniform(-0.1, 0.1)
             
             px = rx * cos(radians(angle)) - ry * sin(radians(angle))
             py = rx * sin(radians(angle)) + ry * cos(radians(angle))
             
-            points.extend([x + px, y + py])
+            points.extend([screenX + px, screenY + py])
         
-        opacity = 50
+        opacity = 80
         if self.lifeRatio > self.LEAF_FALL_START:
             fallProgress = (self.lifeRatio - self.LEAF_FALL_START) / (self.LEAF_FALL_END - self.LEAF_FALL_START)
             opacity = int(50 * (1 - fallProgress))
         
         drawPolygon(*points, fill=color, opacity=opacity)
 
-    def _drawBranchTexture(self, branch, red, green, blue):
-        startX, startY = branch['start']
-        endX, endY = branch['end']
+    def _drawBranchTexture(self, branch, red, green, blue, game):
+        startX, startY = game.worldToScreen(*branch['start'])
+        endX, endY = game.worldToScreen(*branch['end'])
         thickness = branch['thickness']
         
         midX = (startX + endX) / 2
@@ -318,3 +362,4 @@ class Tree:
             drawLine(texX, texY, endTexX, endTexY,
                     fill=textureColor,
                     lineWidth=1)
+                    

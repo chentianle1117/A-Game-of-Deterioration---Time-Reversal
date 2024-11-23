@@ -1,4 +1,4 @@
-from PIL import Image, ImageEnhance, ImageFilter
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 import os
 from cmu_graphics import CMUImage
 import math
@@ -147,16 +147,10 @@ class TextureManagerOptimized:
         if self.updateCounter % 30 == 0:  # Reduced frequency of cache clearing
             self.cache.clear()
 
-    def deteriorateBrick(self, original, decayed, lifeRatio):
-        """Special deterioration effect for brick terrain"""
-        return Image.blend(original, decayed, lifeRatio)
-
-    def deteriorateOther(self, image, level):
-        """General deterioration effect for other terrain types"""
-        modified = image.copy()
-        contrastFactor = 1 + (level * 1.5)  # Reduced contrast effect
-        enhancer = ImageEnhance.Contrast(modified)
-        return enhancer.enhance(contrastFactor)
+    def discolorTexture(self, image, level):
+        """Apply discoloration effect to an image."""
+        grayscale = ImageOps.grayscale(image).convert("RGB")
+        return Image.blend(image, grayscale, level)
 
     def getTextureForCell(self, row, col, terrainType, width, height, character=None):
         """Get or create texture for a cell"""
@@ -166,7 +160,7 @@ class TextureManagerOptimized:
         # Get current life ratio
         lifeRatio = cellState['lifeRatio']
         
-        if terrainType not in self.deterioratedTextures:
+        if terrainType not in self.textures:
             return None, lifeRatio
 
         # Round life ratio for cache key to reduce cache size
@@ -176,13 +170,9 @@ class TextureManagerOptimized:
         if cacheKey not in self.cache:
             try:
                 original = self.textures[terrainType]
-                decayed = self.deterioratedTextures[terrainType]
                 
-                if terrainType == "brick":
-                    currentTexture = self.deteriorateBrick(original, decayed, lifeRatio)
-                else:
-                    currentTexture = self.deteriorateOther(original, lifeRatio)
-                    
+                # Apply discoloration effect
+                currentTexture = self.discolorTexture(original, lifeRatio)
                 resized = currentTexture.resize((width, height), Image.LANCZOS)
                 self.cache[cacheKey] = CMUImage(resized)
             except Exception as e:

@@ -82,9 +82,9 @@ class MapEditor:
         upscaled += noise
         np.clip(upscaled, 0, 1, out=upscaled)
 
-        for row in range(self.finalHeight - 1):
+        for row in range(self.finalHeight):
             terrainRow = []
-            for col in range(self.finalWidth - 1):
+            for col in range(self.finalWidth):
                 value = upscaled[row, col]
                 
                 # Get surrounding values for smoother transitions
