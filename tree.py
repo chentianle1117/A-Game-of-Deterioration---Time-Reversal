@@ -10,12 +10,12 @@ class Tree:
     MIN_LEAVES_PER_BRANCH = 2  # Increased for lush leaves
     LEAF_DENSITY_MULTIPLIER = 0.3  # Increased density
     LEAF_CLUSTER_SIZE = {
-        'main': (6, 8),    # Larger cluster sizes
-        'extra': (3, 5),
-        'connecting': (2, 4)
+        'main': (3, 4),    # Larger cluster sizes
+        'extra': (1, 2),
+        'connecting': (1, 2)
     }
     BASE_TRUNK_LENGTH = 20  # Increased from 15 for a thicker base trunk
-    SCALE = 0.5  # Increased scale for overall larger trees
+    SCALE = 0.4  # Increased scale for overall larger trees
 
     # Life cycle constants
     GROWTH_PHASE_END = 0.5     # 0-0.5: Growing
