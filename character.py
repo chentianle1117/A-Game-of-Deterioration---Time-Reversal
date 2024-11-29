@@ -54,6 +54,51 @@ class Character:
         self.animationSpeed = 0.1
         self.isMoving = False
         
+        # Healing Wave ability
+        self.healingWave = {
+            'isActive': False,
+            'cooldown': 30,  
+            'lastUsed': 0,
+            'healAmount': 0.1,  # 10% healing
+            'radius': 0,
+            'maxRadius': math.sqrt(worldWidth**2 + worldHeight**2) * max(cellWidth, cellHeight),
+            'expansionSpeed': 5
+        }
+
+    def emitHealingWave(self, currentTime):
+        """Emit healing wave if ability is ready"""
+        if self.canUseHealingWave(currentTime):
+            self.healingWave['lastUsed'] = currentTime
+            self.healingWave['isActive'] = True
+            self.healingWave['radius'] = 0
+            return True
+        return False
+
+    def updateAnimation(self, dt=1):
+        """Updates animation state including healing wave"""
+        if self.isMoving:
+            self.animationFrame += self.animationSpeed * dt
+        self.isMoving = False
+
+        # Update healing wave
+        if self.healingWave['isActive']:
+            self.healingWave['waveSize'] += self.healingWave['waveSpeed']
+            if self.healingWave['waveSize'] >= self.healingWave['maxWaveSize']:
+                self.healingWave['isActive'] = False
+                self.healingWave['waveSize'] = 0
+
+    def canUseHealingWave(self, currentTime):
+        """Check if healing wave ability is ready"""
+        timeSinceLastUse = currentTime - self.healingWave['lastUsed']
+        return timeSinceLastUse >= self.healingWave['cooldown']
+
+
+    def getHealingWaveCooldown(self, currentTime):
+        """Get remaining cooldown time"""
+        return max(0, self.healingWave['cooldown'] - 
+                  (currentTime - self.healingWave['lastUsed']))
+
+        
     def getPosition(self):
         """Returns the current position as (x, y) coordinates"""
         return self.position['x'], self.position['y']
@@ -66,6 +111,14 @@ class Character:
             0 <= col < self.worldWidth):
             return row, col
         return None
+    
+    def updateHealingWave(self):
+        """Update healing wave animation"""
+        if self.healingWave['isActive']:
+            self.healingWave['radius'] += self.healingWave['expansionSpeed']
+            if self.healingWave['radius'] >= self.healingWave['maxRadius']:
+                self.healingWave['isActive'] = False
+                self.healingWave['radius'] = 0
 
     def move(self, dx, dy):
         """Moves the character by the given delta, respecting world bounds"""
@@ -92,6 +145,15 @@ class Character:
 
     def draw(self, screenX, screenY, zoomLevel):
         """Draws the character and all associated visual elements"""
+        # Draw healing wave if active
+        if self.healingWave['isActive']:
+            waveSize = self.healingWave['radius'] * zoomLevel
+            drawCircle(screenX, screenY, waveSize,
+                      fill=None, 
+                      border='lightGreen',
+                      borderWidth=3,
+                      opacity=40)
+            
         self._drawRestorationRadius(screenX, screenY, zoomLevel)
         self._drawCharacterBody(screenX, screenY, zoomLevel)
         self._drawDirectionIndicator(screenX, screenY, zoomLevel)
@@ -185,7 +247,7 @@ class Character:
                     else self.colors['strength_low'])
         drawRect(barX, barY, fillWidth, barHeight,
                 fill=fillColor)
-
+        
     def setStrength(self, strength):
         """Sets the character's restoration strength within bounds"""
         self.strength = max(self.minStrength, min(self.maxStrength, strength))
@@ -227,7 +289,10 @@ class Character:
         }
 
     def updateAnimation(self, dt=1):
-        """Updates animation state"""
+        """Updates animation state and healing wave"""
         if self.isMoving:
             self.animationFrame += self.animationSpeed * dt
-        self.isMoving = False  # Reset movement state
+        self.isMoving = False
+        
+        # Update healing wave
+        self.updateHealingWave()

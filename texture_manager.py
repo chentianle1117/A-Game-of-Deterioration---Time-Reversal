@@ -167,6 +167,18 @@ class TextureManagerOptimized:
             return 0.0
         return total / count
 
+    def applyGlobalHealing(self, amount):
+        """Apply instant healing to all non-water cells"""
+        healed = False
+        for key, cell in self.cellStates.items():
+            if cell['terrain'] != 'water':
+                currentLife = cell['lifeRatio']
+                # Ensure significant reduction in deterioration
+                cell['lifeRatio'] = max(0.0, currentLife - amount)
+                if cell['lifeRatio'] != currentLife:
+                    healed = True
+        return healed
+
     def updateDeterioration(self, character=None):
         """Global update for all cells"""
         self.updateCounter += 1

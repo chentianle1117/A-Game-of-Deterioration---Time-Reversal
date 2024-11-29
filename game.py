@@ -5,6 +5,8 @@ from character import Character
 from mini_map import MiniMap
 from map_editor import MapEditor
 from tree import Tree
+import time
+import math
 
 class Game:
     def __init__(self, customMap=None):
@@ -32,18 +34,25 @@ class Game:
         self.grid = customMap
         
         self.character = Character(self.worldWidth, self.worldHeight, 
-                                 self.baseCellWidth, self.baseCellHeight)
+                                self.baseCellWidth, self.baseCellHeight)
         
         self.miniMapState = 'OFF'
         self.miniMap = None
         self.setMiniMap()
         self.updateCamera()
         
+        # Game state
+        self.gameOver = False
+        self.gameWon = False
+        self.startTime = time.time()
+        self.gameTime = 60  # 1 minutes in seconds
+        self.showGameOverMessage = False
+        
         # Tree system
-        self.treeDensity = 0.1  # Initial tree density
+        self.treeDensity = 0.05
         self.trees = []
         self.showDebugInfo = True
-        self.placeTrees()  # Initialize trees
+        self.placeTrees()
 
     def placeTrees(self):
         """Only create tree instances without generating them"""
@@ -183,25 +192,154 @@ class Game:
         self.updateCamera()
 
     def drawUI(self):
-        drawRect(0, 0, 250, 150, fill='black', opacity=50)
+        # Draw ability icon and cooldown
+        abilitySize = 60
+        abilityX = self.windowWidth - 80
+        abilityY = self.windowHeight - 80
+        centerX = abilityX
+        centerY = abilityY
         
-        charX, charY = self.character.getPosition()
-        currentCell = self.character.getCurrentCell()
-        if currentCell:
-            row, col = currentCell
-            labels = [
-                f'Position: ({int(charX)}, {int(charY)})',
-                f'Cell: ({col}, {row})',
-                f'Camera: ({int(self.cameraX)}, {int(self.cameraY)})',
-                f'World: {self.worldWidth}x{self.worldHeight}',
-                f'Zoom: {self.zoomLevel:.2f}x',
-                f'Strength: {self.character.strength:.1f}',
-                f'Trees: {len(self.trees)}',
-                f'Restoration Radius: {self.character.getRestorationRadius():.0f}px'
-            ]
-            for i, text in enumerate(labels):
-                drawLabel(text, 125, 20 + i * 20, size=16, bold=True, fill='white')
+        # Draw ability background
+        drawRect(centerX - abilitySize/2, centerY - abilitySize/2, 
+                abilitySize, abilitySize, 
+                fill='darkBlue', border='lightBlue', 
+                borderWidth=2)
+        
+        # Draw wave symbol
+        wavePoints = []
+        for i in range(12):
+            t = i / 11
+            x = centerX - abilitySize/2 + t * abilitySize
+            y = centerY + math.sin(t * math.pi * 2) * 10
+            wavePoints.extend([x, y])
+        drawPolygon(*wavePoints, 
+                    fill=None, border='lightGreen', 
+                    borderWidth=2)
+        
+        # Draw cooldown overlay
+        currentTime = time.time()
+        if not self.character.canUseHealingWave(currentTime):
+            cooldown = self.character.getHealingWaveCooldown(currentTime)
+            cooldownRatio = cooldown / self.character.healingWave['cooldown']
+            cooldownHeight = abilitySize * cooldownRatio
+            
+            if cooldownHeight > 0:
+                drawRect(centerX - abilitySize/2, 
+                        centerY - abilitySize/2, 
+                        abilitySize, cooldownHeight,
+                        fill='black', opacity=60)
+                
+                # Show cooldown time
+                drawLabel(f"{int(cooldown)}s", 
+                         centerX, centerY,
+                         fill='white', bold=True)
+        
+        # Draw key binding
+        drawLabel("Space", centerX, centerY + abilitySize/2 + 15,
+                 fill='white', bold=True)
+        
+        # Draw timer
+        elapsedTime = time.time() - self.startTime
+        remainingTime = max(0, self.gameTime - elapsedTime)
+        minutes = int(remainingTime // 60)
+        seconds = int(remainingTime % 60)
+        
+        timerColor = 'white'
+        if remainingTime <= 30:
+            timerColor = 'red'
+        elif remainingTime <= 60:
+            timerColor = 'orange'
+            
+        drawLabel(f"Time: {minutes:02d}:{seconds:02d}",
+                 self.windowWidth - 100, 30,
+                 fill=timerColor, bold=True, size=24)
+                 
+        # Draw deterioration bar at top right
+        barWidth = 200
+        barHeight = 20
+        barX = self.windowWidth - barWidth - 20
+        barY = 60
+        
+        # Background
+        drawRect(barX, barY, barWidth, barHeight, fill='darkGray')
+        
+        # Fill bar
+        globalDeterioration = self.textureManager.calculateGlobalDeterioration()
+        fillWidth = barWidth * globalDeterioration
+        fillColor = 'lightGreen'
+        if globalDeterioration >= 0.8:
+            fillColor = 'red'
+            if not self.gameOver:
+                self.gameOver = True
+                self.gameWon = False
+        elif globalDeterioration >= 0.7:
+            fillColor = 'orange'
+            
+        drawRect(barX, barY, fillWidth, barHeight, fill=fillColor)
+        drawRect(barX, barY, barWidth, barHeight, fill=None, border='white')
+        
+        # Check win/lose conditions
+        if remainingTime <= 0 and not self.gameOver:
+            if globalDeterioration < 0.8:
+                self.gameOver = True
+                self.gameWon = True
+                
+        if self.gameOver:
+            self.drawGameOverMessage()
+    
+    def drawGameOverMessage(self):
+        # Semi-transparent overlay
+        drawRect(0, 0, self.windowWidth, self.windowHeight,
+                fill='black', opacity=40)
+        
+        # Message box
+        boxWidth = 400
+        boxHeight = 200
+        boxX = (self.windowWidth - boxWidth) / 2
+        boxY = (self.windowHeight - boxHeight) / 2
+        
+        drawRect(boxX, boxY, boxWidth, boxHeight,
+                fill='white', border='gray',
+                borderWidth=3)
+        
+        # Title
+        titleY = boxY + 50
+        if self.gameWon:
+            message = "Victory!"
+            color = 'green'
+            subMessage = "You successfully preserved the environment!"
+        else:
+            message = "Game Over"
+            color = 'red'
+            subMessage = "The deterioration level became too high!"
+        
+        drawLabel(message,
+                 self.windowWidth / 2, titleY,
+                 fill=color, bold=True, size=36)
+        
+        # Sub-message
+        drawLabel(subMessage,
+                 self.windowWidth / 2, titleY + 50,
+                 fill='black', size=20)
+        
+        # Instructions
+        drawLabel("Press ESC to return to menu",
+                 self.windowWidth / 2, titleY + 100,
+                 fill='gray', size=16)
+        
 
+    def emitHealingWave(self):
+        """Handle healing wave special ability"""
+        currentTime = time.time()
+        if self.character.canUseHealingWave(currentTime):
+            # Start the healing wave animation
+            if self.character.emitHealingWave(currentTime):
+                # Apply the healing effect
+                healAmount = self.character.healingWave['healAmount']  # Get heal amount from character
+                self.textureManager.applyGlobalHealing(healAmount)
+                return True
+        return False
+            
     def drawMiniMap(self):
         if self.miniMapState != 'OFF' and self.miniMap:
             viewport = self.getVisibleCells()

@@ -2,6 +2,7 @@ from cmu_graphics import *
 from game import Game
 from menu import MenuState
 from map_editor import MapEditor
+import time 
 
 def onAppStart(app):
     app.width = 800
@@ -40,26 +41,52 @@ def gameKeyEvents(app, key):
 
 def onKeyPress(app, key):
     if app.state == 'game':
-        gameKeyEvents(app, key)
-    elif app.state == 'editor' and key == 'escape':
-        app.state = 'menu'
+        if app.game.gameOver:
+            if key == 'escape':
+                app.state = 'menu'
+        else:
+            if key == 'space':
+                app.game.emitHealingWave()
+            elif key == 'escape':
+                app.state = 'menu'
+            elif key == '=':
+                app.game.setZoom(app.game.zoomLevel * 1.2)
+            elif key == '-':
+                app.game.setZoom(app.game.zoomLevel / 1.2)
+            elif key == 'd':
+                app.game.toggleDebugInfo()
+            elif key == 'm':
+                app.game.toggleMinimapMode()
+            elif key == ']':
+                app.game.character.setStrength(app.game.character.strength + 0.5)
+            elif key == '[':
+                app.game.character.setStrength(app.game.character.strength - 0.5)
+            elif key == 't':
+                app.game.treeDensity = min(1.0, app.game.treeDensity + 0.05)
+                app.game.placeTrees()
+            elif key == 'g':
+                app.game.treeDensity = max(0.0, app.game.treeDensity - 0.05)
+                app.game.placeTrees()
     elif app.state == 'editor':
-        app.mapEditor.handleKey(key.lower())
+        if key == 'escape':
+            app.state = 'menu'
+        else:
+            app.mapEditor.handleKey(key.lower())
 
 def onKeyHold(app, keys):
-    if app.state == 'game':
+    if app.state == 'game' and not app.game.gameOver:
         dx = dy = 0
-        if 'left' in keys:
+        if 'left' in keys or 'a' in keys:
             dx = -1
-        if 'right' in keys:
+        if 'right' in keys or 'd' in keys:
             dx = 1
-        if 'up' in keys:
+        if 'up' in keys or 'w' in keys:
             dy = -1
-        if 'down' in keys:
+        if 'down' in keys or 's' in keys:
             dy = 1
         if 'shift' in keys:
-            dx *= 4
-            dy *= 4
+            dx *= 2
+            dy *= 2
         if dx or dy:
             if dx:
                 app.game.character.direction = 'left' if dx < 0 else 'right'
@@ -80,12 +107,14 @@ def onMousePress(app, mouseX, mouseY):
             if terrainMap:
                 initializeGame(app, customMap=terrainMap)
                 app.state = 'game'
+                app.game.startTime = time.time()  # Reset game timer
         else:
             app.mapEditor.updateMousePos(mouseX, mouseY)
 
 def onStep(app):
-    if app.state == 'game':
+    if app.state == 'game' and not app.game.gameOver:
         app.game.update()
+        app.game.character.updateAnimation()  # Make sure to update character animation
 
 def onMouseMove(app, mouseX, mouseY):
     if app.state == 'editor':
