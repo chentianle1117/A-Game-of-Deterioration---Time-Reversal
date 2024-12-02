@@ -2,8 +2,47 @@ from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 import os
 from cmu_graphics import CMUImage
 import math
+'''
+====Image Cache Implementation Guide:Written by Claude 3.5, implemented by me====
 
-# Map terrain types to their corresponding file names
+Image Cache Implementation Guide:
+1. Cache Structure:
+    cache = {
+        (terrainType, width, height, state): CMUImage,
+        ('water', 32, 32, 0.5): <water_texture>,
+        ('dirt', 32, 32, 0.75): <deteriorated_dirt_texture>
+    }
+
+ 2. Cache Key Design:
+    - For normal terrain: (type, width, height, deteriorationLevel)
+    - For water: (type, width, height, blurAmount)
+    - Round float values (like 0.78123 -> 0.78) to limit cache size
+
+ 3. Cache Usage Pattern:
+    if cacheKey in self.cache:
+        return cached_texture
+    else:
+        new_texture = create_texture()
+        self.cache[cacheKey] = new_texture
+        return new_texture
+
+ 4. Cache Cleanup:
+    - Clear every N updates (e.g., every 30 frames)
+    - Clear when window resizes
+    - Clear when texture settings change
+
+ 5. Memory Management:
+    - Limit cache size
+    - Use rounded values for cache keys
+    - Clear unused textures periodically
+'''
+
+'''
+====Additional Cache Tutorial Resources referenced:====
+https://api.arcade.academy/en/development/programming_guide/textures.html?utm_source=chatgpt.com
+https://www.datacamp.com/tutorial/python-cache-introduction?utm_source=chatgpt.com
+'''
+
 terrainNameMap = {
     "path_rocks": "PATHROCKS.png",
     "pavement": "PAVEMENT.png",
@@ -23,23 +62,25 @@ class TextureManagerOptimized:
         self.deterioratedTextures = {}  
         self.cache = {}  
         self.updateCounter = 0  
+        
+        # terrain settings
         self.terrainAttributes = {
-            "path_rocks": {"updateFrequency": 10, "maxLife": 600},
+            "path_rocks": {"updateFrequency": 10, "maxLife": 500},
             "pavement": {"updateFrequency": 10, "maxLife": 300},
-            "dirt": {"updateFrequency": 10, "maxLife": 300},
+            "dirt": {"updateFrequency": 10, "maxLife": 200},
             "water": {"updateFrequency": 10, "maxLife": 300},
-            "tall_grass": {"updateFrequency": 10, "maxLife": 200},
-            "tiny_leaves": {"updateFrequency": 10, "maxLife": 250},
+            "tall_grass": {"updateFrequency": 10, "maxLife": 100},
+            "tiny_leaves": {"updateFrequency": 10, "maxLife": 100},
             "woodtile": {"updateFrequency": 10, "maxLife": 400},
-            "snow": {"updateFrequency": 10, "maxLife": 500},
+            "snow": {"updateFrequency": 10, "maxLife": 100},
             "sand": {"updateFrequency": 10, "maxLife": 500},
             "brick": {"updateFrequency": 10, "maxLife": 300}
         }
         self.cellStates = {} 
-        self.lastUpdateTimes = {}  
-        self.deteriorationRate = 0.001  
-        self.healingRate = 0.015  
-        self.loadTextures() 
+        self.lastUpdateTimes = {}
+        self.deteriorationRate = 0.003
+        self.healingRate = 0.015
+        self.loadTextures()
 
     def findTextureDirectory(self):
         currentDir = os.path.dirname(os.path.abspath(__file__))
@@ -54,7 +95,6 @@ class TextureManagerOptimized:
         return None
 
     def loadTextures(self):
-        """Load textures while preserving terrain attributes"""
         textureDir = self.findTextureDirectory()
         if not textureDir:
             print("Texture directory not found.")
@@ -63,38 +103,35 @@ class TextureManagerOptimized:
         originalDir = os.path.join(textureDir, "original landscape")
         deterioratedDir = os.path.join(textureDir, "deteriorated landscape")
 
-        # Load textures but don't override terrain attributes
+        #====Texture Loading Section:Debugged by Claude 3.5====
         for terrainName, filename in terrainNameMap.items():
             originalPath = os.path.join(originalDir, filename)
             deterioratedPath = os.path.join(deterioratedDir, filename)
 
-            # Load original texture
+            # load original
             if os.path.exists(originalPath):
                 self.textures[terrainName] = Image.open(originalPath).convert("RGB")
             else:
                 print(f"Error: Missing original texture for '{terrainName}'")
 
-            # Load deteriorated texture if available
+            # load deteriorated version
             if os.path.exists(deterioratedPath):
                 self.deterioratedTextures[terrainName] = Image.open(deterioratedPath).convert("RGB")
             else:
-                # Use original texture as fallback
                 if terrainName in self.textures:
                     self.deterioratedTextures[terrainName] = self.textures[terrainName].copy()
                 else:
                     print(f"Error: Missing deteriorated texture and fallback for '{terrainName}'")
-
+            #====Texture Loading Section:Debugged by Claude 3.5====
 
     def getCellKey(self, row, col):
-        """Generate unique key for cell coordinates"""
         return f"{row},{col}"
 
     def initializeCellState(self, row, col, terrainType):
-        """Initialize or return existing cell state"""
         key = self.getCellKey(row, col)
         if key not in self.cellStates:
             self.cellStates[key] = {
-                'lifeRatio': 0.0,  # Start fresh
+                'lifeRatio': 0.0,
                 'terrain': terrainType,
                 'lastUpdate': self.updateCounter
             }
@@ -102,7 +139,6 @@ class TextureManagerOptimized:
         return self.cellStates[key]
 
     def processCellDeterioration(self, row, col, character=None, elapsedSteps=1):
-        """Process deterioration and healing for a single cell with better error handling"""
         try:
             key = self.getCellKey(row, col)
             if key not in self.cellStates:
@@ -111,24 +147,18 @@ class TextureManagerOptimized:
             cell = self.cellStates[key]
             terrain = cell['terrain']
 
-            # exclude water from deterioration
+            # water doesn't deteriorate
             if terrain == "water":
                 return 0.0
 
             if terrain not in self.terrainAttributes:
                 print(f"Warning: Missing terrain attributes for {terrain}, using defaults")
-                self.terrainAttributes[terrain] = {
-                    "updateFrequency": 10,
-                    "maxLife": 300
-                }
+                self.terrainAttributes[terrain] = {"updateFrequency": 10, "maxLife": 300}
 
-            attributes = self.terrainAttributes[terrain]
-            
-            # Calculate base deterioration
+            # calculate changes
             deterioration = self.deteriorationRate * elapsedSteps
-            
-            # Apply character's healing effect if in range
             healing = 0
+            
             if character:
                 charX, charY = character.getPosition()
                 cellX = col * character.cellWidth + (character.cellWidth / 2)
@@ -138,108 +168,84 @@ class TextureManagerOptimized:
                 restorationRadius = character.getRestorationRadius()
                 
                 if distance <= restorationRadius:
-                    # Healing is stronger closer to character and scales with character strength
                     distanceRatio = 1 - (distance / restorationRadius)
                     healing = self.healingRate * distanceRatio * character.strength * elapsedSteps
 
-            # Apply net change
-            netChange = deterioration - healing
-            cell['lifeRatio'] = max(0.0, min(1.0, cell['lifeRatio'] + netChange))
-            
-            # Update last update time
+            cell['lifeRatio'] = max(0.0, min(1.0, cell['lifeRatio'] + deterioration - healing))
             self.lastUpdateTimes[key] = self.updateCounter
             
             return cell['lifeRatio']
             
         except Exception as e:
             print(f"Error in processCellDeterioration for cell ({row}, {col}): {e}")
-            return 0.0  # Return safe default value
+            return 0.0
+
     def calculateGlobalDeterioration(self):
-        """Calculate average deterioration across all non-water cells"""
         total = 0
         count = 0
-        
         for key, cell in self.cellStates.items():
             if cell['terrain'] != 'water':
                 total += cell['lifeRatio']
                 count += 1
-        if count == 0:
-            return 0.0
-        return total / count
+        return total / count if count > 0 else 0.0
 
     def applyGlobalHealing(self, amount):
-        """Apply instant healing to all non-water cells"""
         healed = False
         for key, cell in self.cellStates.items():
             if cell['terrain'] != 'water':
-                currentLife = cell['lifeRatio']
-                # Ensure significant reduction in deterioration
-                cell['lifeRatio'] = max(0.0, currentLife - amount)
-                if cell['lifeRatio'] != currentLife:
+                old = cell['lifeRatio']
+                cell['lifeRatio'] = max(0.0, old - amount)
+                if cell['lifeRatio'] != old:
                     healed = True
         return healed
 
     def updateDeterioration(self, character=None):
-        """Global update for all cells"""
         self.updateCounter += 1
         
-        # Process all existing cells
         for key in list(self.cellStates.keys()):
             row, col = map(int, key.split(','))
-            lastUpdate = self.lastUpdateTimes.get(key, 0)
-            elapsedSteps = self.updateCounter - lastUpdate
+            elapsedSteps = self.updateCounter - self.lastUpdateTimes.get(key, 0)
             
             if elapsedSteps > 0:
                 self.processCellDeterioration(row, col, character, elapsedSteps)
 
-        # Clear cache periodically
-        if self.updateCounter % 30 == 0:  # Reduced frequency of cache clearing
+        # clear cache occasionally
+        if self.updateCounter % 30 == 0:
             self.cache.clear()
 
     def blendDeterioratedTexture(self, image, level, terrainType):
-        """Apply discoloration effect to an image."""
         try:
-            # Use the already loaded deteriorated texture if available
             if terrainType in self.deterioratedTextures:
                 deteriorated = self.deterioratedTextures[terrainType]
             else:
-                # Fallback to grayscale if no deteriorated texture exists
                 deteriorated = ImageOps.grayscale(image).convert("RGB")
             
-            # Ensure images are the same size
             if image.size != deteriorated.size:
                 deteriorated = deteriorated.resize(image.size, Image.LANCZOS)
                 
             return Image.blend(image, deteriorated, level)
         except Exception as e:
-            print(f"Error in blendDeterioratedTexture for {terrainType}: {e}")
-            # Return original image as fallback
+            print(f"Error blending texture for {terrainType}: {e}")
             return image
 
     def getTextureForCell(self, row, col, terrainType, width, height, character=None):
-        """Get or create texture for a cell"""
         width = max(1, width)  
         height = max(1, height) 
         try:
-            # Initialize if needed
             cellState = self.initializeCellState(row, col, terrainType)
-            
-            # Get current life ratio
             lifeRatio = cellState['lifeRatio']
             
             if terrainType not in self.textures:
                 return None, lifeRatio
 
-            # Special handling for water
+            # special water effect
             if terrainType == 'water':
-                # Use updateCounter to create a pulsing effect
-                blurAmount = abs(math.sin(self.updateCounter * 0.5)) * 2  # back and forth between 0 and 2
+                blurAmount = abs(math.sin(self.updateCounter * 0.5)) * 2
                 cacheKey = (terrainType, width, height, round(blurAmount, 2))
                 
                 if cacheKey not in self.cache:
                     try:
                         original = self.textures[terrainType]
-                        # Apply blur effect for water
                         blurred = original.filter(ImageFilter.GaussianBlur(radius=blurAmount))
                         resized = blurred.resize((width, height), Image.LANCZOS)
                         self.cache[cacheKey] = CMUImage(resized)
@@ -249,9 +255,8 @@ class TextureManagerOptimized:
                 
                 return self.cache[cacheKey], 0.0
 
-            # For other terrain types
-            # Round life ratio for cache key to reduce cache size
-            roundedRatio = round(lifeRatio, 2)  # Reduced precision for better caching
+            # handle other terrain
+            roundedRatio = round(lifeRatio, 2)
             cacheKey = (terrainType, width, height, roundedRatio)
             
             if cacheKey not in self.cache:
@@ -271,19 +276,15 @@ class TextureManagerOptimized:
             return None, 0.0
 
     def clearCache(self):
-        """Clear the texture cache"""
         self.cache.clear()
 
     def setDeteriorationRate(self, rate):
-        """Set the base deterioration rate"""
         self.deteriorationRate = max(0.0, min(0.01, rate))
 
     def setHealingRate(self, rate):
-        """Set the base healing rate"""
         self.healingRate = max(0.0, min(0.02, rate))
 
     def getTerrainStats(self, row, col):
-        """Get current stats for a cell"""
         key = self.getCellKey(row, col)
         if key in self.cellStates:
             return {

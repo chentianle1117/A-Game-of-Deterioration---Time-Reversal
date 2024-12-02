@@ -1,5 +1,20 @@
 from cmu_graphics import *
 import numpy as np
+import random
+
+'''
+====Terrain Map Generation Referenced Materials:====
+https://jackmckew.dev/3d-terrain-in-python.html
+https://github.com/fmerizzi/Procedural-terrain-generation-with-style-transfer? (referenced the general ideas, not directly the code)
+
+====AI Assistance Summary====
+The following features were implemented with Claude 3.5's help, mostly for debugging and optimization:
+
+paint():
+- Optimized brush painting using numpy's ogrid
+- Circular brush mask implementation
+- Smooth value blending
+'''
 
 class MapEditor:
     def __init__(self, width, height, worldWidth, worldHeight):
@@ -73,85 +88,84 @@ class MapEditor:
         drawCircle(self.mouseX, self.mouseY, radius * 0.2, fill=color, opacity=75)
 
     def generateTerrainMap(self):
-        terrainMap = []
+        # Create base heightmap by upscaling the editor grid
         upscaled = np.repeat(np.repeat(self.grid, 4, axis=0), 4, axis=1)
         upscaled = upscaled[:self.finalHeight, :self.finalWidth]
         
-        # Add some noise for variation
-        noise = np.random.uniform(-0.05, 0.05, upscaled.shape)
-        upscaled += noise
+        # Add subtle random variations
+        upscaled += np.random.uniform(-0.05, 0.05, upscaled.shape)
         np.clip(upscaled, 0, 1, out=upscaled)
 
+        terrainMap = []
         for row in range(self.finalHeight):
             terrainRow = []
             for col in range(self.finalWidth):
-                value = upscaled[row, col]
+                height = upscaled[row, col]
                 
-                # Get surrounding values for smoother transitions
-                surroundingVals = []
+                # Calculate average height of surrounding area
+                avgHeight = 0
+                neighbors = 0
                 for dr in [-1, 0, 1]:
+                    newRow = row + dr
+                    if not (0 <= newRow < self.finalHeight): continue
                     for dc in [-1, 0, 1]:
-                        r, c = row + dr, col + dc
-                        if (0 <= r < self.finalHeight and 
-                            0 <= c < self.finalWidth):
-                            surroundingVals.append(upscaled[r, c])
-                avgVal = sum(surroundingVals) / len(surroundingVals)
+                        newCol = col + dc
+                        if not (0 <= newCol < self.finalWidth): continue
+                        avgHeight += upscaled[newRow, newCol]
+                        neighbors += 1
+                avgHeight /= neighbors
                 
-                # Terrain type decision with more natural distribution
-                if value < 0.2:
-                    terrain = "water"
-                elif value < 0.3:
-                    # Transition zone between water and land
-                    terrain = "sand" if np.random.rand() < 0.7 else "dirt"
-                elif value < 0.8:
-                    # Main land area with varied vegetation
-                    rand = np.random.rand()
-                    if avgVal < 0.5:  # Lower elevation
-                        if rand < 0.4:
-                            terrain = "dirt"
-                        elif rand < 0.8:
-                            terrain = "tall_grass"
-                        else:
-                            terrain = "tiny_leaves"
-                    else:  # Higher elevation
-                        if rand < 0.3:
-                            terrain = "dirt"
-                        elif rand < 0.7:
-                            terrain = "tall_grass"
-                        else:
-                            terrain = "path_rocks"
-                elif value < 0.95:
-                    # Higher ground
-                    rand = np.random.rand()
-                    if rand < 0.6:
-                        terrain = "path_rocks"
-                    elif rand < 0.8:
-                        terrain = "brick"
-                    else:
-                        terrain = "dirt"  # Some dirt patches in high ground
-                else:
-                    # Mountain tops
-                    terrain = "snow"
-
-                # Add variation in growth potential for trees
-                growthPotential = 0.5
+                # Determine terrain type based on height
+                terrain = self._getTerrainType(height, avgHeight)
+                
+                # Calculate tree growth potential for suitable terrain
+                growthPotential = 0.5  # default value
                 if terrain in ["dirt", "tall_grass", "tiny_leaves"]:
-                    # Calculate growth potential based on elevation and surroundings
-                    growthPotential = min(1.0, max(0.2, 
-                        0.5 + (avgVal - 0.5) * 0.5 +  # Elevation factor
-                        np.random.uniform(-0.1, 0.1)))  # Random variation
+                    # Adjust based on elevation and add some randomness
+                    heightFactor = avgHeight - 0.5
+                    randomFactor = np.random.uniform(-0.1, 0.1)
+                    growthPotential = max(0.2, min(1.0, 0.5 + heightFactor * 0.5 + randomFactor))
                 
                 terrainRow.append({
                     "terrain": terrain,
                     "texture": terrain,
                     "explored": False,
-                    "growthPotential": growthPotential  # Add growth potential
+                    "growthPotential": growthPotential
                 })
             terrainMap.append(terrainRow)
 
-        print(f"Generated terrain map: {len(terrainMap)}x{len(terrainMap[0])}")
         return terrainMap
 
+    def _getTerrainType(self, height, avgHeight):
+        if height < 0.2:
+            return "water"
+        
+        if height < 0.3:
+            return "sand" if random.random() < 0.7 else "dirt"
+        
+        if height < 0.8:
+            # Main land area
+            if avgHeight < 0.5:
+                # Lower elevation
+                roll = random.random()
+                if roll < 0.4: return "dirt"
+                if roll < 0.8: return "tall_grass"
+                return "tiny_leaves"
+            else:
+                # Higher elevation
+                roll = random.random()
+                if roll < 0.3: return "dirt"
+                if roll < 0.7: return "tall_grass"
+                return "path_rocks"
+        
+        if height < 0.95:
+            # High ground
+            roll = random.random()
+            if roll < 0.6: return "path_rocks"
+            if roll < 0.8: return "brick"
+            return "dirt"
+        
+        return "snow"  # Mountain peaks
 
     def updateMousePos(self, mouseX, mouseY):
         self.mouseX = mouseX
@@ -162,6 +176,7 @@ class MapEditor:
         row = int(mouseY / self.cellHeight)
         return row, col
 
+    #====Ogrid function introduced by Claude 3.5====
     def paint(self, mouseX, mouseY):
         row, col = self.getGridCoords(mouseX, mouseY)
         brushSize = self.brush['size']
@@ -176,6 +191,7 @@ class MapEditor:
                     current = self.grid[newRow, newCol]
                     target = self.brush['value']
                     self.grid[newRow, newCol] = (current * (1 - self.brush['opacity']) + target * self.brush['opacity'])
+    #====Ogrid function introduced by Claude 3.5====
 
     def handleKey(self, key):
         if key == '[':

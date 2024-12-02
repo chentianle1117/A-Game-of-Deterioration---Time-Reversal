@@ -57,10 +57,6 @@ def onKeyPress(app, key):
                 app.game.toggleDebugInfo()
             elif key == 'm':
                 app.game.toggleMinimapMode()
-            elif key == ']':
-                app.game.character.setStrength(app.game.character.strength + 0.5)
-            elif key == '[':
-                app.game.character.setStrength(app.game.character.strength - 0.5)
             elif key == 't':
                 app.game.treeDensity = min(1.0, app.game.treeDensity + 0.05)
                 app.game.placeTrees()
@@ -92,7 +88,7 @@ def onKeyHold(app, keys):
                 app.game.character.direction = 'left' if dx < 0 else 'right'
             if dy:
                 app.game.character.direction = 'up' if dy < 0 else 'down'
-            app.game.character.move(dx, dy)
+            app.game.character.move(app.game, dx, dy)
             app.game.updateCamera()
 
 def onMousePress(app, mouseX, mouseY):
@@ -113,8 +109,9 @@ def onMousePress(app, mouseX, mouseY):
 
 def onStep(app):
     if app.state == 'game' and not app.game.gameOver:
+        app.game.updateGame(1/app.stepsPerSecond)
         app.game.update()
-        app.game.character.updateAnimation()  # Make sure to update character animation
+        app.game.character.updateAnimation()
 
 def onMouseMove(app, mouseX, mouseY):
     if app.state == 'editor':
