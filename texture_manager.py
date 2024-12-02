@@ -78,7 +78,7 @@ class TextureManagerOptimized:
         }
         self.cellStates = {} 
         self.lastUpdateTimes = {}
-        self.deteriorationRate = 0.003
+        self.deteriorationRate = 0.002
         self.healingRate = 0.015
         self.loadTextures()
 

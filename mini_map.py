@@ -228,6 +228,16 @@ class MiniMap:
             self.drawBackground()
             self.drawContent()
             self.drawViewport()
+            self.drawPlayer()
+            
+            # Draw toggle instruction
+            instructionY = self.position['y'] + self.size['height'] + 15
+            drawLabel("Press M to toggle map view",
+                     self.position['x'] + self.size['width']/2,
+                     instructionY,
+                     fill='white', bold=True,
+                     size=14)
+                 
         except Exception as e:
             print(f"Error drawing minimap: {e}")
             drawRect(self.position['x'], self.position['y'],

@@ -59,7 +59,7 @@ class Game:
         
         # Initialize equipment list and spawn density
         self.equipment = []
-        self.equipmentDensity = 0.02  
+        self.equipmentDensity = 0.05
         
         # Create character first so it exists when spawning equipment
         self.character = Character(self.worldWidth, self.worldHeight, 
@@ -86,6 +86,13 @@ class Game:
         self.trees = []
         self.showDebugInfo = True
         self._spawnTrees()
+        
+        self.inventory = {
+            'radius': {'count': 0, 'total_bonus': 0},
+            'power': {'count': 0, 'total_bonus': 0},
+            'burst': {'count': 0}
+        }
+        self.healingBursts = []  # List to track active burst animations
 
     def _spawnTrees(self):
         ok_terrain = {'dirt', 'tiny_leaves', 'tall_grass'}
@@ -300,13 +307,155 @@ class Game:
 
     #====Section debugged by Claude 3.5, very complex, mostly attempted to be written by me, but some details added by Claude====
     def drawUI(self):
-        # Ability icon and cooldown
-        abilitySize = 60
-        abilityX = self.windowWidth - 80
-        abilityY = self.windowHeight - 80
-        centerX = abilityX
-        centerY = abilityY
+        # Draw instructions in top left
+        instructions = [
+            "Controls:",
+            "WASD/Arrows: Move",
+            "Space: Healing Wave",
+            "Shift: Sprint",
+            "+/-: Zoom",
+            "M: Toggle Map View",
+            "ESC: Menu"
+        ]
         
+        # Draw instruction background
+        padding = 10
+        lineHeight = 20
+        boxWidth = 150
+        boxHeight = len(instructions) * lineHeight + padding * 2
+        
+        drawRect(padding, padding, boxWidth, boxHeight,
+                fill='black', opacity=40)
+        
+        # Draw instructions
+        for i, text in enumerate(instructions):
+            drawLabel(text, 
+                     padding + boxWidth/2, 
+                     padding + lineHeight/2 + i * lineHeight,
+                     fill='white', bold=True,
+                     size=14)
+
+        # Draw timer
+        elapsedTime = time.time() - self.startTime
+        remainingTime = max(0, self.gameTime - elapsedTime)
+        minutes = int(remainingTime // 60)
+        seconds = int(remainingTime % 60)
+        
+        timerColor = 'white'
+        if remainingTime <= 30:
+            timerColor = 'red'
+        elif remainingTime <= 60:
+            timerColor = 'orange'
+        
+        drawLabel(f"Time: {minutes:02d}:{seconds:02d}",
+                 self.windowWidth - 100, 30,
+                 fill=timerColor, bold=True, size=24)
+
+        # Draw global deterioration bar
+        totalCells = 0
+        deterioratedCells = 0
+        for row in range(self.worldHeight):
+            for col in range(self.worldWidth):
+                key = self.textureManager.getCellKey(row, col)
+                cell = self.textureManager.cellStates.get(key)
+                if cell and cell['terrain'] != 'water':
+                    totalCells += 1
+                    deterioratedCells += cell['lifeRatio']
+
+        if totalCells > 0:
+            deteriorationRatio = deterioratedCells / totalCells
+            barWidth = 200
+            barHeight = 20
+            barX = self.windowWidth - barWidth - 20
+            barY = 60
+            
+            # Background
+            drawRect(barX, barY, barWidth, barHeight,
+                    fill='darkGray')
+            
+            # Deterioration level
+            fillWidth = barWidth * deteriorationRatio
+            red = int(255 * deteriorationRatio)
+            green = int(255 * (1 - deteriorationRatio))
+            drawRect(barX, barY, fillWidth, barHeight,
+                    fill=rgb(red, green, 0))
+            
+            # Border
+            drawRect(barX, barY, barWidth, barHeight,
+                    fill=None, border='white')
+            
+            # Label
+            drawLabel("Global Deterioration",
+                     barX + barWidth/2, barY - 10,
+                     fill='white', bold=True)
+
+        # Draw inventory (5 slots)
+        slotSize = 40
+        spacing = 5
+        slots = 5
+        barWidth = (slotSize * slots) + (spacing * (slots - 1))
+        startX = self.windowWidth/2 - barWidth/2
+        startY = self.windowHeight - 60
+        
+        # Draw inventory background
+        drawRect(startX - 5, startY - 5,
+                barWidth + 10, slotSize + 10,
+                fill='black', opacity=40)
+        
+        # Draw slots and equipment
+        self._drawInventorySlots(startX, startY, slotSize, spacing, slots)
+
+        # Draw healing wave ability icon
+        abilitySize = 60
+        abilityX = startX - abilitySize - 20
+        abilityY = startY + slotSize/2
+        self._drawAbilityIcon(abilityX, abilityY, abilitySize)
+
+        # Check for game over conditions
+        if deteriorationRatio >= 0.8 or remainingTime <= 0:
+            self.gameOver = True
+            self.gameWon = False
+        elif remainingTime <= 0 and deteriorationRatio < 0.8:
+            self.gameOver = True
+            self.gameWon = True
+
+        # Draw game over screen if needed
+        if self.gameOver:
+            self._drawGameOverScreen()
+
+    def _drawInventorySlots(self, startX, startY, slotSize, spacing, slots):
+        # Draw slots
+        for i in range(slots):
+            x = startX + (slotSize + spacing) * i
+            drawRect(x, startY, slotSize, slotSize,
+                    fill='gray', opacity=30,
+                    border='white', borderWidth=1)
+        
+        # Draw collected equipment
+        currentSlot = 0
+        for eqType, data in self.inventory.items():
+            if data['count'] > 0 and currentSlot < slots:
+                x = startX + (slotSize + spacing) * currentSlot
+                y = startY
+                
+                # Draw equipment icon
+                drawCircle(x + slotSize/2, y + slotSize/2,
+                          slotSize/2 - 5,
+                          fill=Equipment.TYPES[eqType]['color'])
+                drawLabel(Equipment.TYPES[eqType]['symbol'],
+                         x + slotSize/2, y + slotSize/2,
+                         fill='white', bold=True)
+                
+                # Draw count if more than 1
+                if data['count'] > 1:
+                    drawLabel(str(data['count']),
+                             x + slotSize - 5, y + 10,
+                             fill='white', bold=True,
+                             size=14)
+                
+                currentSlot += 1
+
+    def _drawAbilityIcon(self, centerX, centerY, abilitySize):
         # Ability background
         drawRect(centerX - abilitySize/2, centerY - abilitySize/2, 
                 abilitySize, abilitySize, 
@@ -345,55 +494,6 @@ class Game:
         # Key binding
         drawLabel("Space", centerX, centerY + abilitySize/2 + 15,
                  fill='white', bold=True)
-        
-        # Timer
-        elapsedTime = time.time() - self.startTime
-        remainingTime = max(0, self.gameTime - elapsedTime)
-        minutes = int(remainingTime // 60)
-        seconds = int(remainingTime % 60)
-        
-        timerColor = 'white'
-        if remainingTime <= 30:
-            timerColor = 'red'
-        elif remainingTime <= 60:
-            timerColor = 'orange'
-            
-        drawLabel(f"Time: {minutes:02d}:{seconds:02d}",
-                 self.windowWidth - 100, 30,
-                 fill=timerColor, bold=True, size=24)
-                 
-        # deterioration bar at top right
-        barWidth = 200
-        barHeight = 20
-        barX = self.windowWidth - barWidth - 20
-        barY = 60
-        
-        # Background
-        drawRect(barX, barY, barWidth, barHeight, fill='darkGray')
-        
-        # Fill bar
-        globalDeterioration = self.textureManager.calculateGlobalDeterioration()
-        fillWidth = barWidth * globalDeterioration
-        fillColor = 'lightGreen'
-        if globalDeterioration >= 0.8:
-            fillColor = 'red'
-            if not self.gameOver:
-                self.gameOver = True
-                self.gameWon = False
-        elif globalDeterioration >= 0.7:
-            fillColor = 'orange'
-            
-        drawRect(barX, barY, fillWidth, barHeight, fill=fillColor)
-        drawRect(barX, barY, barWidth, barHeight, fill=None, border='white')
-        
-        # Win/lose conditions
-        if remainingTime <= 0 and not self.gameOver:
-            if globalDeterioration < 0.8:
-                self.gameOver = True
-                self.gameWon = True
-                
-        if self.gameOver:
-            self.drawGameOverMessage()
     #====Section debugged by Claude 3.5, very complex, mostly attempted to be written by me, but some details added by Claude====
     
     def drawGameOverMessage(self):
@@ -617,12 +717,13 @@ class Game:
     def updateGame(self, dt):
         # Add to existing update method
         self._checkEquipmentCollection()
+        self._updateHealingBursts()
 
     def _checkEquipmentCollection(self):
         charX, charY = self.character.getPosition()
-        collection_radius = self.character.visual['baseSize'] * 2  # Increased collection radius
+        collection_radius = self.character.visual['baseSize'] * 2
         
-        for equip in self.equipment[:]:  # Use slice to allow removal during iteration
+        for equip in self.equipment[:]:
             if not equip.collected:
                 dx = charX - equip.x
                 dy = charY - equip.y
@@ -630,9 +731,155 @@ class Game:
                 
                 if distance < collection_radius:
                     bonuses = equip.getBonuses()
-                    # Apply bonuses
-                    self.character.strength += bonuses['strength_bonus']
-                    self.character.restorationRadiusMultiplier += bonuses['radius_bonus']
+                    equip_type = bonuses['type']
+                    
+                    if bonuses['isInstantUse']:
+                        # For burst equipment, apply effect immediately
+                        if equip_type == 'burst':
+                            self._applyBurstHeal(charX, charY, bonuses)
+                    else:
+                        # For collectible equipment, add to inventory
+                        self.inventory[equip_type]['count'] += 1
+                        if equip_type == 'radius':
+                            self.character.restorationRadiusMultiplier += bonuses['radius_bonus']
+                            self.inventory[equip_type]['total_bonus'] += bonuses['radius_bonus']
+                        elif equip_type == 'power':
+                            self.character.strength += bonuses['strength_bonus']
+                            self.inventory[equip_type]['total_bonus'] += bonuses['strength_bonus']
+                    
                     equip.collected = True
-                    self.equipment.remove(equip)  # Remove from list immediately
-                    print(f"Equipment collected! New strength: {self.character.strength}")
+                    self.equipment.remove(equip)
+
+    def _applyBurstHeal(self, centerX, centerY, bonuses):
+        heal_radius = bonuses['heal_radius']  # This is in grid cells
+        heal_amount = bonuses['heal_amount']
+        
+        # Add burst animation - convert grid radius to pixel radius
+        burst_radius = heal_radius * self.baseCellWidth
+        self.healingBursts.append({
+            'x': centerX,
+            'y': centerY,
+            'currentRadius': 0,
+            'maxRadius': burst_radius,
+            'startTime': time.time(),
+            'duration': 0.3,
+            'color': Equipment.TYPES['burst']['color']
+        })
+        
+        # Apply healing to surrounding cells
+        centerCol = int(centerX / self.baseCellWidth)
+        centerRow = int(centerY / self.baseCellHeight)
+        
+        for row in range(centerRow - heal_radius, centerRow + heal_radius + 1):
+            for col in range(centerCol - heal_radius, centerCol + heal_radius + 1):
+                if self._isValidCell(row, col):
+                    dx = col - centerCol
+                    dy = row - centerRow
+                    # Only heal cells within the circular radius
+                    if (dx*dx + dy*dy) <= heal_radius*heal_radius:
+                        key = self.textureManager.getCellKey(row, col)
+                        cell = self.textureManager.cellStates.get(key)
+                        if cell and cell['terrain'] != 'water':
+                            cell['lifeRatio'] = max(0.0, cell['lifeRatio'] - heal_amount)
+
+    def _updateHealingBursts(self):
+        currentTime = time.time()
+        # Update and remove finished burst animations
+        self.healingBursts = [burst for burst in self.healingBursts 
+                             if (currentTime - burst['startTime']) < burst['duration']]
+        
+        # Update current radius of active bursts
+        for burst in self.healingBursts:
+            progress = (currentTime - burst['startTime']) / burst['duration']
+            burst['currentRadius'] = burst['maxRadius'] * progress
+
+    def _drawHealingBursts(self):
+        for burst in self.healingBursts:
+            screenX, screenY = self.worldToScreen(burst['x'], burst['y'])
+            progress = (time.time() - burst['startTime']) / burst['duration']
+            
+            # Calculate current radius with easing
+            easedProgress = math.sin(progress * math.pi / 2)  # Smooth easing
+            currentRadius = burst['maxRadius'] * easedProgress * self.zoomLevel
+            
+            # Draw expanding circle
+            drawCircle(screenX, screenY, currentRadius,
+                      fill=None,
+                      border=burst['color'],
+                      borderWidth=2,
+                      opacity=80 * (1 - progress))  # Fade out as it expands
+
+    def drawInventory(self):
+        # Inventory bar settings
+        slotSize = 40
+        spacing = 5
+        slots = 10
+        barWidth = (slotSize * slots) + (spacing * (slots - 1))
+        startX = 20
+        startY = self.windowHeight - 60
+        
+        # Draw inventory background
+        drawRect(startX - 5, startY - 5,
+                barWidth + 10, slotSize + 10,
+                fill='black', opacity=40)
+        
+        # Draw slots
+        for i in range(slots):
+            x = startX + (slotSize + spacing) * i
+            drawRect(x, startY, slotSize, slotSize,
+                    fill='gray', opacity=30,
+                    border='white', borderWidth=1)
+        
+        # Draw collected equipment
+        currentSlot = 0
+        for eqType, data in self.inventory.items():
+            if data['count'] > 0:
+                x = startX + (slotSize + spacing) * currentSlot
+                y = startY
+                
+                # Draw equipment icon
+                drawCircle(x + slotSize/2, y + slotSize/2,
+                          slotSize/2 - 5,
+                          fill=Equipment.TYPES[eqType]['color'])
+                drawLabel(Equipment.TYPES[eqType]['symbol'],
+                         x + slotSize/2, y + slotSize/2,
+                         fill='white', bold=True)
+                
+                # Draw count if more than 1
+                if data['count'] > 1:
+                    drawLabel(str(data['count']),
+                             x + slotSize - 5, y + 10,
+                             fill='white', bold=True,
+                             size=14)
+                
+                currentSlot += 1
+
+    def _drawGameOverScreen(self):
+        # Semi-transparent overlay
+        drawRect(0, 0, self.windowWidth, self.windowHeight,
+                fill='black', opacity=60)
+        
+        titleY = self.windowHeight / 2 - 50
+        
+        if self.gameWon:
+            message = "Victory!"
+            color = 'green'
+            subMessage = "You successfully preserved the environment!"
+        else:
+            message = "Game Over"
+            color = 'red'
+            subMessage = "The deterioration level became too high!"
+        
+        drawLabel(message,
+                 self.windowWidth / 2, titleY,
+                 fill=color, bold=True, size=36)
+        
+        # Sub-message
+        drawLabel(subMessage,
+                 self.windowWidth / 2, titleY + 50,
+                 fill='white', size=20)
+        
+        # Instructions
+        drawLabel("Press ESC to return to menu",
+                 self.windowWidth / 2, titleY + 100,
+                 fill='gray', size=16)
