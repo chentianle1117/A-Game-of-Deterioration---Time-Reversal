@@ -41,26 +41,19 @@ class Equipment:
     def draw(self, game):
         if not self.collected:
             screenX, screenY = game.worldToScreen(self.x, self.y)
-            
-            # Draw outer glow
+            # outer glow
             drawCircle(screenX, screenY, self.size/1.2,
                       fill=self.bonus['color'],
                       opacity=40)
-            
-            # Draw inner circle
+            #inner circle
             drawCircle(screenX, screenY, self.size/1.6,
                       fill=self.bonus['color'],
                       opacity=80)
-            
-            # Draw pulsing effect
+            #pulsing effect
             pulseSize = self.size * (1 + math.sin(time.time() * 3) * 0.2)
             drawCircle(screenX, screenY, pulseSize/1.4,
-                      fill=None,
-                      border=self.bonus['color'],
-                      borderWidth=2,
-                      opacity=50)
-            
-            # Draw symbol
+                      fill=None, border=self.bonus['color'],borderWidth=2,opacity=50)
+            #symbol
             drawLabel(self.bonus['symbol'],
                      screenX, screenY,
                      fill='white',

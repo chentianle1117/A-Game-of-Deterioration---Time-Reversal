@@ -41,6 +41,9 @@ Image Cache Implementation Guide:
 ====Additional Cache Tutorial Resources referenced:====
 https://api.arcade.academy/en/development/programming_guide/textures.html?utm_source=chatgpt.com
 https://www.datacamp.com/tutorial/python-cache-introduction?utm_source=chatgpt.com
+
+====Texture Pack Utilized==== (**deteriorated versions are modified by myself in photoshop)
+https://opengameart.org/content/pixel-texture-pack
 '''
 
 terrainNameMap = {

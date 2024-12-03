@@ -61,19 +61,28 @@ class Game:
         self.equipment = []
         self.equipmentDensity = 0.05
         
-        # Create character first so it exists when spawning equipment
+        # Create character with adjusted initial values
         self.character = Character(self.worldWidth, self.worldHeight, 
                                 self.baseCellWidth, self.baseCellHeight)
         self.character.strength = 0.1
-        self.character.restorationRadiusMultiplier = 10
+        self.character.restorationRadiusMultiplier = 5
         self.character.healingWave['healAmount'] = 0.05
         
         # Spawn equipment
         self._spawnEquipment()
         
-        self.miniMapState = 'OFF'
-        self.miniMap = None
-        self.setMiniMap()
+        self.miniMapState = 'DETERIORATION'
+        self.miniMap = MiniMap(
+            windowWidth=self.windowWidth,
+            windowHeight=self.windowHeight,
+            worldWidth=self.worldWidth,
+            worldHeight=self.worldHeight,
+            cellWidth=self.baseCellWidth,
+            cellHeight=self.baseCellHeight,
+            colorMap=self.terrainTypes
+        )
+        self.miniMap.showDeterioration = True
+        self.miniMap.updateGrid(self.grid)
         self.updateCamera()
         
         self.gameOver = False
@@ -557,14 +566,15 @@ class Game:
             self.miniMap.draw()
 
     def toggleMinimapMode(self):
-        print("Toggling minimap mode from:", self.miniMapState) 
         if self.miniMapState == 'OFF':
             self.miniMapState = 'TERRAIN'
+            self.miniMap.showDeterioration = False
         elif self.miniMapState == 'TERRAIN':
             self.miniMapState = 'DETERIORATION'
+            self.miniMap.showDeterioration = True
         else:
             self.miniMapState = 'OFF'
-        print("New minimap mode:", self.miniMapState) 
+        print("New minimap mode:", self.miniMapState)
 
     def setMiniMap(self, minimap=None):
         if minimap is None:
@@ -721,7 +731,7 @@ class Game:
 
     def _checkEquipmentCollection(self):
         charX, charY = self.character.getPosition()
-        collection_radius = self.character.visual['baseSize'] * 2
+        collection_radius = self.character.visual['baseSize']  # Just use character's base size
         
         for equip in self.equipment[:]:
             if not equip.collected:
@@ -750,64 +760,71 @@ class Game:
                     equip.collected = True
                     self.equipment.remove(equip)
 
-    def _applyBurstHeal(self, centerX, centerY, bonuses):
-        heal_radius = bonuses['heal_radius']  # This is in grid cells
-        heal_amount = bonuses['heal_amount']
+    def _applyBurstHeal(self, x, y, bonuses):
+        radius = bonuses['heal_radius']
+        healing = bonuses['heal_amount']
         
-        # Add burst animation - convert grid radius to pixel radius
-        burst_radius = heal_radius * self.baseCellWidth
+        # Create burst effect
         self.healingBursts.append({
-            'x': centerX,
-            'y': centerY,
+            'x': x, 'y': y,
             'currentRadius': 0,
-            'maxRadius': burst_radius,
+            'maxRadius': radius * self.baseCellWidth,
             'startTime': time.time(),
-            'duration': 0.3,
+            'duration': 1.2,
             'color': Equipment.TYPES['burst']['color']
         })
         
-        # Apply healing to surrounding cells
-        centerCol = int(centerX / self.baseCellWidth)
-        centerRow = int(centerY / self.baseCellHeight)
+        # Heal cells in radius
+        center_col = int(x / self.baseCellWidth)
+        center_row = int(y / self.baseCellHeight)
         
-        for row in range(centerRow - heal_radius, centerRow + heal_radius + 1):
-            for col in range(centerCol - heal_radius, centerCol + heal_radius + 1):
-                if self._isValidCell(row, col):
-                    dx = col - centerCol
-                    dy = row - centerRow
-                    # Only heal cells within the circular radius
-                    if (dx*dx + dy*dy) <= heal_radius*heal_radius:
-                        key = self.textureManager.getCellKey(row, col)
-                        cell = self.textureManager.cellStates.get(key)
-                        if cell and cell['terrain'] != 'water':
-                            cell['lifeRatio'] = max(0.0, cell['lifeRatio'] - heal_amount)
+        for row in range(center_row - radius, center_row + radius + 1):
+            for col in range(center_col - radius, center_col + radius + 1):
+                if not self._isValidCell(row, col):
+                    continue
+                    
+                # Check if within circle
+                dx = col - center_col
+                dy = row - center_row
+                if (dx*dx + dy*dy) > radius*radius:
+                    continue
+                    
+                key = self.textureManager.getCellKey(row, col)
+                cell = self.textureManager.cellStates.get(key)
+                if cell and cell['terrain'] != 'water':
+                    cell['lifeRatio'] = max(0.0, cell['lifeRatio'] - healing)
 
     def _updateHealingBursts(self):
         currentTime = time.time()
-        # Update and remove finished burst animations
-        self.healingBursts = [burst for burst in self.healingBursts 
-                             if (currentTime - burst['startTime']) < burst['duration']]
+        active_bursts = []
         
-        # Update current radius of active bursts
         for burst in self.healingBursts:
-            progress = (currentTime - burst['startTime']) / burst['duration']
-            burst['currentRadius'] = burst['maxRadius'] * progress
+            if currentTime - burst['startTime'] < burst['duration']:
+                # Update radius
+                progress = (currentTime - burst['startTime']) / burst['duration']
+                burst['currentRadius'] = burst['maxRadius'] * progress
+                active_bursts.append(burst)
+                
+        self.healingBursts = active_bursts
 
     def _drawHealingBursts(self):
         for burst in self.healingBursts:
-            screenX, screenY = self.worldToScreen(burst['x'], burst['y'])
-            progress = (time.time() - burst['startTime']) / burst['duration']
+            x, y = self.worldToScreen(burst['x'], burst['y'])
+            t = (time.time() - burst['startTime']) / burst['duration']
             
-            # Calculate current radius with easing
-            easedProgress = math.sin(progress * math.pi / 2)  # Smooth easing
-            currentRadius = burst['maxRadius'] * easedProgress * self.zoomLevel
+            # Smooth expansion
+            radius = burst['maxRadius'] * (0.5 - 0.5 * math.cos(t * math.pi))
+            radius *= self.zoomLevel
             
-            # Draw expanding circle
-            drawCircle(screenX, screenY, currentRadius,
+            # Fade out
+            fade = 1 - (t * t)  # Quadratic fade
+            border_width = max(2, min(4, self.zoomLevel))
+            
+            drawCircle(x, y, radius,
                       fill=None,
                       border=burst['color'],
-                      borderWidth=2,
-                      opacity=80 * (1 - progress))  # Fade out as it expands
+                      borderWidth=border_width,
+                      opacity=100 * fade)
 
     def drawInventory(self):
         # Inventory bar settings
@@ -818,7 +835,7 @@ class Game:
         startX = 20
         startY = self.windowHeight - 60
         
-        # Draw inventory background
+        # inventory background
         drawRect(startX - 5, startY - 5,
                 barWidth + 10, slotSize + 10,
                 fill='black', opacity=40)
@@ -828,7 +845,7 @@ class Game:
             x = startX + (slotSize + spacing) * i
             drawRect(x, startY, slotSize, slotSize,
                     fill='gray', opacity=30,
-                    border='white', borderWidth=1)
+                    border='white', borderWidth=1.5)
         
         # Draw collected equipment
         currentSlot = 0
@@ -837,7 +854,7 @@ class Game:
                 x = startX + (slotSize + spacing) * currentSlot
                 y = startY
                 
-                # Draw equipment icon
+                # equipment icon
                 drawCircle(x + slotSize/2, y + slotSize/2,
                           slotSize/2 - 5,
                           fill=Equipment.TYPES[eqType]['color'])

@@ -1,5 +1,11 @@
 from cmu_graphics import *
 import math
+import os
+from PIL import Image
+
+'''
+Character Sprite Image Creidt: https://www.sandromaglione.com/articles/pixel-art-top-down-game-sprite-design-and-animation
+'''
 
 class Character:
     def __init__(self, worldWidth, worldHeight, cellWidth, cellHeight):
@@ -14,40 +20,22 @@ class Character:
         }
         
         self.visual = {
-            'baseSize': min(cellWidth, cellHeight) * 0.4,
-            'outlineWidth': 2,
-            'directionLength': 0.7,
+            'baseSize': 15,
             'strengthIndicatorHeight': 4,
             'restoreEffectOpacity': 80,
-            'spriteSize': min(cellWidth, cellHeight) * 1.5  # Add sprite size here
+            'spriteSize': min(cellWidth, cellHeight) * 0.8,
+            'backgroundColor': None,
         }
 
-        # Add sprite loading with detailed logging
-        try:
-            spritePath = 'assets/objects/characters/'
-            print(f"\nInitializing character sprites from: {spritePath}")
-            
-            self.sprites = {}
-            sprite_files = {
-                'down': 'Char1_front.png',
-                'up': 'Char1_back.png',
-                'left': 'Char1_left.png',
-                'right': 'Char1_right.png'
-            }
-            
-            for direction, filename in sprite_files.items():
-                full_path = f'{spritePath}{filename}'
-                print(f"Loading {direction} sprite: {full_path}")
-                try:
-                    self.sprites[direction] = CMUImage(full_path)
-                    print(f"✓ Successfully loaded {direction} sprite")
-                except Exception as e:
-                    print(f"✗ Failed to load {direction} sprite: {e}")
-                    self.sprites[direction] = None
-                
-        except Exception as e:
-            print(f"Error during sprite initialization: {e}")
-            self.sprites = None
+        # Initialize sprites after setting up visual parameters
+        self._loadSprites()
+        
+        print(f"\nSprite initialization complete:")
+        print(f"Sprite dictionary exists: {hasattr(self, 'sprites')}")
+        if hasattr(self, 'sprites') and self.sprites:
+            print(f"Available sprites: {list(self.sprites.keys())}")
+        else:
+            print("No sprites loaded")
         
         # Rest of the initialization remains the same
         self.position = {
@@ -59,8 +47,8 @@ class Character:
         
         self.strength = 0.1
         self.maxStrength = 5.0
-        self.minStrength = 1.0
-        self.restorationRadiusMultiplier = 15
+        self.minStrength = 0.1
+        self.restorationRadiusMultiplier = 5
         
         self.colors = {
             'body': 'red',
@@ -85,13 +73,14 @@ class Character:
             'expansionSpeed': 5
         }
 
-    def emitHealingWave(self, currentTime):
-        if self.canUseHealingWave(currentTime):
-            self.healingWave['lastUsed'] = currentTime
-            self.healingWave['isActive'] = True
-            self.healingWave['radius'] = 0
-            return True
-        return False
+    def emitHealingWave(self, time):
+        if time - self.healingWave['lastUsed'] < self.healingWave['cooldown']:
+            return False
+        
+        self.healingWave['lastUsed'] = time
+        self.healingWave['isActive'] = True
+        self.healingWave['radius'] = 0
+        return True
 
     def updateAnimation(self, dt=1):
         if self.isMoving:
@@ -116,11 +105,13 @@ class Character:
         return None
     
     def updateHealingWave(self):
-        if self.healingWave['isActive']:
-            self.healingWave['radius'] += self.healingWave['expansionSpeed']
-            if self.healingWave['radius'] >= self.healingWave['maxRadius']:
-                self.healingWave['isActive'] = False
-                self.healingWave['radius'] = 0
+        if not self.healingWave['isActive']:
+            return
+        
+        self.healingWave['radius'] += self.healingWave['expansionSpeed']
+        if self.healingWave['radius'] >= self.healingWave['maxRadius']:
+            self.healingWave['isActive'] = False
+            self.healingWave['radius'] = 0
                 
     def move(self, game, dx, dy):
         if dx == 0 and dy == 0:
@@ -149,105 +140,82 @@ class Character:
 
     def draw(self, screenX, screenY, zoomLevel):
         try:
-            # Draw passive healing radius first (underneath everything)
-            radius = self.getRestorationRadius() * zoomLevel
-            
-            # Main circle with higher opacity
-            drawCircle(screenX, screenY, radius,
-                    fill=self.colors['restoration'],
-                    opacity=40)  # Increased from previous value
-            
-            # Add a border to make it more visible
-            drawCircle(screenX, screenY, radius,
-                    fill=None,
-                    border=self.colors['restoration'],
-                    borderWidth=2,
-                    opacity=60)
-            
-            # Pulsing effect
-            pulseRadius = radius * (0.8 + 0.2 * math.sin(self.animationFrame))
-            drawCircle(screenX, screenY, pulseRadius,
-                    fill=None,
-                    border=self.colors['restoration'],
-                    borderWidth=1,
-                    opacity=30)
-            
-            # Draw healing wave if active
-            if self.healingWave['isActive']:
-                waveRadius = self.healingWave['radius'] * zoomLevel
-                drawCircle(screenX, screenY, waveRadius,
-                        fill=None,
-                        border='lightGreen',
-                        borderWidth=2,
-                        opacity=40)
+            # Draw restoration radius first (so it's behind the character)
+            self._drawRestorationRadius(screenX, screenY, zoomLevel)
             
             # Draw character body
             self._drawCharacterBody(screenX, screenY, zoomLevel)
             
-            # Draw UI elements
-            self._drawDirectionIndicator(screenX, screenY, zoomLevel)
+            # Draw strength indicator
             self._drawStrengthBar(screenX, screenY, zoomLevel)
             
+            # Draw healing wave if active
+            if self.healingWave['isActive']:
+                radius = self.healingWave['radius'] * zoomLevel
+                drawCircle(screenX, screenY, radius,
+                          fill=None, border='lightGreen',
+                          borderWidth=2, opacity=40)
+        
         except Exception as e:
             print(f"Error in character draw: {e}")
-            # Fallback to simple circle if drawing fails
+            # Emergency fallback
             drawCircle(screenX, screenY, 10, fill='red')
 
-    def _drawRestorationRadius(self, screenX, screenY, zoomLevel):
-        # Main restoration circle
-        radius = self.getRestorationRadius() * zoomLevel
-        drawCircle(screenX, screenY, radius,
-                fill=None,
-                border='lightBlue',
-                borderWidth=2,
-                opacity=80)
-        
-        # Pulsing effect
-        pulseRadius = radius * (0.8 + 0.2 * math.sin(self.animationFrame))
-        drawCircle(screenX, screenY, pulseRadius,
-                fill=None,
-                border='lightBlue',
-                borderWidth=1,
-                opacity=40)
-        
+    def _drawRestorationRadius(self, x, y, zoom):
+        try:
+            radius = self.getRestorationRadius() * zoom
+            
+            # Main circle opacity based on strength
+            base_opacity = 30 + (40 * min(1.0, self.strength))  # 30-70 range
+            
+            # Draw main circle
+            drawCircle(x, y, radius,
+                      fill='lightBlue',
+                      opacity=base_opacity)
+            
+            # Draw border
+            drawCircle(x, y, radius,
+                      fill=None, 
+                      border='lightBlue',
+                      borderWidth=max(2, zoom * 0.5),
+                      opacity=100)
+            
+            # Add pulse effect
+            pulse = radius * (0.8 + 0.2 * math.sin(self.animationFrame))
+            drawCircle(x, y, pulse,
+                      fill='lightBlue',
+                      opacity=base_opacity * 0.5)
+        except Exception as e:
+            print(f"Failed to draw restoration radius: {e}")
+
     def _drawCharacterBody(self, screenX, screenY, zoomLevel):
         try:
-            # Calculate size based on zoom
-            size = max(3, self.visual['spriteSize'] * zoomLevel)
-            
-            # Add bounce animation when moving
+            size = max(32, self.visual['spriteSize'] * zoomLevel)
             if self.isMoving:
                 screenY += math.sin(self.animationFrame * 4) * 2
             
-            print(f"\nDrawing character at ({screenX}, {screenY})")
-            print(f"Current direction: {self.direction}")
-            print(f"Sprite dictionary exists: {hasattr(self, 'sprites')}")
-            if hasattr(self, 'sprites') and self.sprites:
-                print(f"Available sprites: {list(self.sprites.keys())}")
-                sprite = self.sprites.get(self.direction)
-                print(f"Sprite for {self.direction}: {'Found' if sprite else 'Not found'}")
-                
+            if hasattr(self, 'sprites') and self.sprites and self.direction in self.sprites:
+                sprite = self.sprites[self.direction]
                 if sprite:
-                    # Remove align parameter as it might cause issues
-                    drawImage(sprite, 
-                             screenX - size/2, 
-                             screenY - size/2,
+                    drawImage(sprite,
+                             screenX, 
+                             screenY,
                              width=size, 
-                             height=size)
-                    print("Drew sprite successfully")
+                             height=size,
+                             align='center',
+                             opacity=100)
                     return
                 
             raise Exception("No valid sprite available")
-                
         except Exception as e:
             print(f"Falling back to circle drawing due to: {e}")
-            # Fallback to circle
             size = max(3, self.visual['baseSize'] * zoomLevel)
             drawCircle(screenX, screenY, size/2,
                       fill=self.colors['body'],
                       border=self.colors['outline'])
 
     def _drawDirectionIndicator(self, screenX, screenY, zoomLevel):
+        'old function'
         size = max(3, self.visual['baseSize'] * zoomLevel)
         length = size * self.visual['directionLength']
         
@@ -266,38 +234,34 @@ class Character:
         drawCircle(endX, endY, max(1, size * 0.15),
                   fill=self.colors['direction'])
 
-    def _drawStrengthBar(self, screenX, screenY, zoomLevel):
-        size = max(3, self.visual['baseSize'] * zoomLevel)
+    def _drawStrengthBar(self, x, y, zoom):
+        size = max(3, self.visual['baseSize'] * zoom)
         
-        # Draw strength value
+        # Value label
         drawLabel(f"Strength: {self.strength:.1f}", 
-                 screenX, screenY - size - 10,
+                 x, y - size - 10,
                  fill='white', bold=True,
                  border='black', borderWidth=1)
         
-        # Draw strength bar
-        barWidth = size * 2
-        barHeight = self.visual['strengthIndicatorHeight']
-        barX = screenX - barWidth/2
-        barY = screenY - size - 5
+        # Bar background and fill
+        width = size * 2
+        height = self.visual['strengthIndicatorHeight']
+        barX = x - width/2
+        barY = y - size - 5
         
-        # Background
-        drawRect(barX, barY, barWidth, barHeight, 
-                fill='gray', opacity=50)
+        drawRect(barX, barY, width, height, fill='gray', opacity=50)
         
-        # Fill bar based on current strength
-        fillWidth = barWidth * (self.strength / self.maxStrength)
-        fillColor = (self.colors['strength_high'] if self.strength > self.maxStrength/2 
-                    else self.colors['strength_low'])
-        drawRect(barX, barY, fillWidth, barHeight, fill=fillColor)
+        fill_width = width * (self.strength / self.maxStrength)
+        fill_color = self.colors['strength_high' if self.strength > self.maxStrength/2 else 'strength_low']
+        drawRect(barX, barY, fill_width, height, fill=fill_color)
 
     def setStrength(self, strength):
         self.strength = max(self.minStrength, min(self.maxStrength, strength))
 
     def getRestorationRadius(self):
-        # Make sure we return a reasonable minimum radius
+        # Adjusted to provide a smaller minimum radius
         baseRadius = self.strength * self.restorationRadiusMultiplier
-        minRadius = self.visual['baseSize'] * 2  # Minimum radius should be visible
+        minRadius = self.visual['baseSize']  # Reduced minimum radius
         return max(baseRadius, minRadius)
 
     def teleport(self, x, y):
@@ -336,3 +300,35 @@ class Character:
         
         # Check terrain walkability
         return game.isTerrainWalkable(x, y)
+
+    def _loadSprites(self):
+        sprite_dir = 'assets/objects/characters/'
+        sprite_files = {
+            'down': 'Char1_front.png',
+            'up': 'Char1_back.png',
+            'left': 'Char1_left.png',
+            'right': 'Char1_right.png'
+        }
+        
+        self.sprites = {}
+        for direction, filename in sprite_files.items():
+            path = os.path.join(sprite_dir, filename)
+            if not os.path.exists(path):
+                print(f"Missing sprite: {filename}")
+                continue
+            
+            try:
+                # Open image and preserve alpha channel
+                img = Image.open(path)
+                if img.mode != 'RGBA':
+                    img = img.convert('RGBA')
+                    
+                # Create a new RGBA image with transparent background
+                new_img = Image.new('RGBA', img.size, (0, 0, 0, 0))
+                new_img.paste(img, (0, 0), img)
+                
+                self.sprites[direction] = CMUImage(new_img)
+                print(f"Loaded {direction} sprite with transparency")
+            except Exception as e:
+                print(f"Failed loading {filename}: {e}")
+                self.sprites[direction] = None

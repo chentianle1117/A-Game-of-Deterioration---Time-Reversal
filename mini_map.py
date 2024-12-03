@@ -131,17 +131,19 @@ class MiniMap:
                         baseGridI = i * self.resolution['scale']
                         baseGridJ = j * self.resolution['scale']
                         
-                        samplePoints = []
-                        for di in range(self.resolution['scale']):
-                            for dj in range(self.resolution['scale']):
-                                gridI = min(baseGridI + di, self.worldHeight - 1)
-                                gridJ = min(baseGridJ + dj, self.worldWidth - 1)
-                                stats = textureManager.getTerrainStats(gridI, gridJ)
-                                if stats:
-                                    samplePoints.append(stats['lifeRatio'])
+                        # Get deterioration value for this cell
+                        gridI = min(baseGridI, self.worldHeight - 1)
+                        gridJ = min(baseGridJ, self.worldWidth - 1)
                         
-                        if samplePoints:
-                            self.cache.deteriorationColors[i, j] = sum(samplePoints) / len(samplePoints)
+                        # Get cell state directly from texture manager
+                        key = textureManager.getCellKey(gridI, gridJ)
+                        state = textureManager.cellStates.get(key)
+                        
+                        if state:
+                            self.cache.deteriorationColors[i, j] = state['lifeRatio']
+                        else:
+                            self.cache.deteriorationColors[i, j] = 0.0
+                            
             except Exception as e:
                 print(f"Error updating deterioration: {e}")
 
@@ -215,8 +217,9 @@ class MiniMap:
                 y = self.position['y'] + i * self.scaledCell['height']
                 ratio = self.cache.deteriorationColors[i, j]
                 
-                red = int(255 * ratio)
-                green = int(255 * (1 - ratio))
+                # More red for higher deterioration, more green for lower
+                red = int(255 * ratio)  # Red increases with deterioration
+                green = int(255 * (1 - ratio))  # Green decreases with deterioration
                 blue = 0
                 
                 drawRect(x, y, 
