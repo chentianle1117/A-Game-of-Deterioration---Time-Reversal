@@ -42,6 +42,13 @@ class MapEditor:
                 'width': 150,
                 'height': 40
             },
+            'infiniteButton': {
+                'text': 'Start Infinite Mode',
+                'x': width - 100,
+                'y': 80,
+                'width': 150,
+                'height': 40
+            },
             'tools': [
                 {'text': 'Water (Lowest)', 'value': 0.0, 'key': 'b'},
                 {'text': 'Dirt/Grass (Medium)', 'value': 0.5, 'key': 'm'},
@@ -62,23 +69,46 @@ class MapEditor:
         self.drawBrushPreview()
 
     def drawUI(self):
-        panelHeight = 180  # Increased height for new tool
+        panelHeight = 200  # Adjusted height
         drawRect(0, 0, 250, panelHeight, fill='black', opacity=50)
-        y = 30
-        for tool in self.ui['tools']:
-            drawLabel(f"{tool['text']} ({tool['key']})", 125, y, fill='white', bold=True)
-            y += 25
-        drawLabel(f"Brush Size: {self.brush['size']} ([ ])", 125, y, fill='white', bold=True)
-        y += 25
-        drawLabel("Use medium elevation for", 125, y, fill='white', bold=True)
-        y += 20
-        drawLabel("best tree growth", 125, y, fill='white', bold=True)
         
+        # Draw title
+        drawLabel("Map Editor", 125, 20, fill='white', bold=True, size=20)
+        
+        # Draw simplified instructions
+        y = 50
+        instructions = [
+            "Create Your World:",
+            "• Click and drag to paint terrain",
+            "• [ ] - Adjust brush size",
+            "• B/W - Toggle black/white",
+            "",
+            f"Current Brush Size: {self.brush['size']}",
+            "",
+            "Press ESC when done"
+        ]
+        
+        for text in instructions:
+            if text.startswith("Create"):
+                drawLabel(text, 125, y, fill='lightGreen', bold=True)
+            elif text.startswith("•"):
+                drawLabel(text, 125, y, fill='lightGray')
+            else:
+                drawLabel(text, 125, y, fill='white')
+            y += 20
+        
+        # Draw save button
         btn = self.ui['saveButton']
         drawRect(btn['x'] - btn['width']//2, btn['y'] - btn['height']//2, 
                 btn['width'], btn['height'], fill='darkGray', border='white')
         drawLabel(btn['text'], btn['x'], btn['y'], fill='white', bold=True)
         
+        # Draw infinite mode button
+        btn = self.ui['infiniteButton']
+        drawRect(btn['x'] - btn['width']//2, btn['y'] - btn['height']//2, 
+                btn['width'], btn['height'], fill='darkGreen', border='white')
+        drawLabel(btn['text'], btn['x'], btn['y'], fill='white', bold=True)
+
     def drawBrushPreview(self):
         radius = self.brush['size'] * max(self.cellWidth, self.cellHeight)
         drawCircle(self.mouseX, self.mouseY, radius, fill=None, border='white', borderWidth=2)
@@ -143,27 +173,26 @@ class MapEditor:
         if height < 0.3:
             return "sand" if random.random() < 0.7 else "dirt"
         
-        if height < 0.8:
-            # Main land area
-            if avgHeight < 0.5:
-                # Lower elevation
-                roll = random.random()
-                if roll < 0.4: return "dirt"
-                if roll < 0.8: return "tall_grass"
-                return "tiny_leaves"
-            else:
-                # Higher elevation
-                roll = random.random()
-                if roll < 0.3: return "dirt"
-                if roll < 0.7: return "tall_grass"
-                return "path_rocks"
+        if height < 0.5:
+            # Main land area, lower elevation
+            roll = random.random()
+            if roll < 0.3: return "dirt"
+            if roll < 0.6: return "tall_grass"
+            return "tiny_leaves"
         
-        if height < 0.95:
+        if height < 0.7:
+            # Main land area, medium elevation
+            roll = random.random()
+            if roll < 0.3: return "path_rocks"
+            if roll < 0.6: return "pavement"
+            return "woodtile"
+        
+        if height < 0.9:
             # High ground
             roll = random.random()
-            if roll < 0.6: return "path_rocks"
-            if roll < 0.8: return "brick"
-            return "dirt"
+            if roll < 0.5: return "bricks"
+            if roll < 0.8: return "snow"
+            # return "bigleaves"
         
         return "snow"  # Mountain peaks
 
@@ -207,7 +236,15 @@ class MapEditor:
         btn = self.ui['saveButton']
         return (abs(mouseX - btn['x']) < btn['width']//2 and abs(mouseY - btn['y']) < btn['height']//2)
 
+    def isOverInfiniteButton(self, mouseX, mouseY):
+        btn = self.ui['infiniteButton']
+        return (abs(mouseX - btn['x']) < btn['width']//2 and 
+                abs(mouseY - btn['y']) < btn['height']//2)
+
     def handleClick(self, mouseX, mouseY):
         if self.isOverSaveButton(mouseX, mouseY):
             return self.generateTerrainMap()
+        elif self.isOverInfiniteButton(mouseX, mouseY):
+            # Implement infinite mode functionality
+            pass
         return None

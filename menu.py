@@ -14,22 +14,43 @@ class MenuState:
             'button_hover': rgb(60, 60, 60),
             'text': 'white',
             'title': 'white',
-            'version': 'gray'
+            'version': 'gray',
+            'instructions': 'lightGray',
+            'highlight': 'lightGreen'
         }
         
         # Menu title settings
         self.title = {
-            'text': 'Texture Deterioration Game',
+            'text': 'Environmental Restoration',
+            'subtitle': 'A Game of Healing and Balance',
             'size': 48,
-            'y_pos': height // 3
+            'y_pos': height // 5
         }
+        
+        # Game description
+        self.description = [
+            "Goal: Keep the world's deterioration below 80% before time runs out!",
+            "",
+            "Key Features:",
+            "• Design your terrain in the map editor",
+            "• Use healing waves (Space) to restore deteriorating land",
+            "• Watch out for the deterioration meter!",
+            "",
+            "Controls:",
+            "WASD/Arrows - Move character",
+            "Space - Release healing wave",
+            "Shift - Sprint",
+            "+/- - Zoom in/out",
+            "M - Toggle map view",
+            "ESC - Return to menu"
+        ]
         
         # Define buttons
         self.buttons = [
             {
                 'text': 'Start Your Adventure',
                 'action': 'construct_map',
-                'y_offset': 40,
+                'y_offset': 20,
                 'tooltip': 'Open the map editor to create your own world'
             }
         ]
@@ -86,7 +107,7 @@ class MenuState:
         drawRect(0, 0, self.width, self.height,
                 fill=self.colors['background'])
         
-        # Draw title
+        # Draw title and subtitle
         drawLabel(self.title['text'],
                  self.width//2,
                  self.title['y_pos'],
@@ -94,23 +115,42 @@ class MenuState:
                  bold=True,
                  fill=self.colors['title'])
         
-        # Draw version info
-        drawLabel('Version 1.0',
+        drawLabel(self.title['subtitle'],
                  self.width//2,
-                 self.title['y_pos'] + 40,
-                 size=16,
-                 fill=self.colors['version'])
+                 self.title['y_pos'] + 50,
+                 size=24,
+                 bold=True,
+                 fill=self.colors['highlight'])
         
-        # Draw buttons
+        # Draw description (aligned to the left)
+        startX = self.width//4  # Move text to the left
+        startY = self.title['y_pos'] + 100
+        lineHeight = 22
+        
+        for i, line in enumerate(self.description):
+            color = self.colors['highlight'] if line.startswith('•') else self.colors['instructions']
+            size = 18 if line.startswith('Key Features:') or line.startswith('Controls:') else 16
+            bold = line.startswith('Key Features:') or line.startswith('Controls:')
+            
+            drawLabel(line,
+                     startX,  # Use left alignment
+                     startY + i * lineHeight,
+                     size=size,
+                     bold=bold,
+                     fill=color,
+                     align='left')  # Align text to the left
+        
+        # Draw buttons (keep centered)
         for button in self.buttons:
             self.drawButton(button, 
                           isHovered=(button == self.hover_button))
         
-        # Draw footer text
-        drawLabel('Use arrow keys to move, +/- to zoom, ESC for menu',
-                 self.width//2, self.height - 40,
-                 fill=self.colors['text'],
-                 size=16)
+        # Draw version
+        drawLabel('Version 1.0',
+                 self.width//2,
+                 self.height - 20,
+                 size=16,
+                 fill=self.colors['version'])
     
     def handleClick(self, mouseX, mouseY):
         """Handle mouse clicks and return the action if a button is clicked"""

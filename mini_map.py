@@ -126,22 +126,32 @@ class MiniMap:
         self.cache.playerPos = playerPos
         if textureManager and self.cache.deteriorationColors is not None:
             try:
+                # Get global deterioration value
+                globalDeterioration = textureManager.calculateGlobalDeterioration()
+                
+                # Calculate scale factors to map entire world to minimap resolution
+                scaleY = self.worldHeight / self.resolution['rows']
+                scaleX = self.worldWidth / self.resolution['cols']
+                
                 for i in range(self.resolution['rows']):
                     for j in range(self.resolution['cols']):
-                        baseGridI = i * self.resolution['scale']
-                        baseGridJ = j * self.resolution['scale']
+                        # Map minimap coordinates to world coordinates
+                        worldY = int(i * scaleY)
+                        worldX = int(j * scaleX)
                         
-                        # Get deterioration value for this cell
-                        gridI = min(baseGridI, self.worldHeight - 1)
-                        gridJ = min(baseGridJ, self.worldWidth - 1)
+                        # Ensure we stay within world bounds
+                        worldY = min(worldY, self.worldHeight - 1)
+                        worldX = min(worldX, self.worldWidth - 1)
                         
-                        # Get cell state directly from texture manager
-                        key = textureManager.getCellKey(gridI, gridJ)
+                        # Get cell state for this world position
+                        key = f"{worldY},{worldX}"
                         state = textureManager.cellStates.get(key)
                         
-                        if state:
+                        if state and state['terrain'] != 'water':
+                            # Use actual deterioration value
                             self.cache.deteriorationColors[i, j] = state['lifeRatio']
                         else:
+                            # Water or invalid cells get 0 deterioration
                             self.cache.deteriorationColors[i, j] = 0.0
                             
             except Exception as e:

@@ -81,7 +81,7 @@ class TextureManagerOptimized:
         }
         self.cellStates = {} 
         self.lastUpdateTimes = {}
-        self.deteriorationRate = 0.002
+        self.deteriorationRate = 0.005
         self.healingRate = 0.015
         self.loadTextures()
 
@@ -192,12 +192,16 @@ class TextureManagerOptimized:
                 count += 1
         return total / count if count > 0 else 0.0
 
-    def applyGlobalHealing(self, amount):
+    def applyGlobalHealing(self, healAmount):
+        """Apply percentage-based healing to all deteriorated cells"""
         healed = False
         for key, cell in self.cellStates.items():
             if cell['terrain'] != 'water':
                 old = cell['lifeRatio']
-                cell['lifeRatio'] = max(0.0, old - amount)
+                # healAmount is now treated as a percentage (0.2 = 20%)
+                # Calculate healing based on current deterioration
+                healing = old * healAmount  # This makes it percentage based
+                cell['lifeRatio'] = max(0.0, old - healing)
                 if cell['lifeRatio'] != old:
                     healed = True
         return healed

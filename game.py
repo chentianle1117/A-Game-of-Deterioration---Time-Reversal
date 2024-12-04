@@ -32,7 +32,15 @@ The following features were implemented with Claude 3.5's help:
 '''
 
 class Game:
-    def __init__(self, customMap=None):
+    def __init__(self, customMap=None, isInfiniteMode=False):
+        self.isInfiniteMode = isInfiniteMode
+        self.statistics = {
+            'deterioration': [],
+            'power': [],
+            'speed': [],
+            'healingRadius': [],
+            'timestamps': []
+        }
         self.windowWidth = 800
         self.windowHeight = 600
         self.worldWidth = 200
@@ -41,15 +49,19 @@ class Game:
         self.baseCellHeight = 8
         
         self.cameraX = self.cameraY = 0
-        self.zoomLevel = 11.0
+        self.zoomLevel = 8.0
         self.minZoom = 5.0
-        self.maxZoom = 13.0
+        self.maxZoom = 10.0
         
         self.terrainTypes = {
             'water': 'blue',
             'dirt': 'brown',
             'tall_grass': 'green',
-            'path_rocks': 'gray'
+            'path_rocks': 'gray',
+            'bricks': 'darkGray',
+            'snow': 'white',
+            'bigleaves': 'forestGreen',
+            'tiny_leaves': 'lightGreen'
         }
         
         self.textureManager = TextureManagerOptimized()
@@ -68,10 +80,17 @@ class Game:
         self.character.restorationRadiusMultiplier = 5
         self.character.healingWave['healAmount'] = 0.05
         
+        try:
+            # Spawn character on high ground
+            self._spawnCharacter()
+        except Exception as e:
+            print(f"Failed to spawn character: {e}")
+            raise Exception("Cannot start game: No valid spawn position found")
+        
         # Spawn equipment
         self._spawnEquipment()
         
-        self.miniMapState = 'DETERIORATION'
+        self.miniMapState = 'TERRAIN'  # Instead of 'DETERIORATION'
         self.miniMap = MiniMap(
             windowWidth=self.windowWidth,
             windowHeight=self.windowHeight,
@@ -99,18 +118,27 @@ class Game:
         self.inventory = {
             'radius': {'count': 0, 'total_bonus': 0},
             'power': {'count': 0, 'total_bonus': 0},
+            'speed': {'count': 0, 'total_bonus': 0},
             'burst': {'count': 0}
         }
         self.healingBursts = []  # List to track active burst animations
+        
+        # Load equipment sprites
+        Equipment.loadSprites()
 
     def _spawnTrees(self):
         ok_terrain = {'dirt', 'tiny_leaves', 'tall_grass'}
         
-        for row in range(self.worldHeight):
-            for col in range(self.worldWidth):
+        # Clear existing trees
+        self.trees = []
+        
+        # Only spawn trees within valid bounds
+        for row in range(min(self.worldHeight, len(self.grid))):
+            for col in range(min(self.worldWidth, len(self.grid[row]))):
                 try:
                     cell = self.grid[row][col]
-                    if cell['terrain'] in ok_terrain and random.random() < self.treeDensity:
+                    if isinstance(cell, dict) and cell.get('terrain') in ok_terrain:
+                        if random.random() < self.treeDensity:
                             x = (col + 0.5) * self.baseCellWidth
                             y = (row + 0.5) * self.baseCellHeight
                             self.trees.append((Tree(x, y), (row, col)))
@@ -223,6 +251,10 @@ class Game:
             # Clear screen
             drawRect(0, 0, self.windowWidth, self.windowHeight, fill='black')
             
+            if self.gameOver and self.isInfiniteMode:
+                self.drawEndGameGraph()
+                return
+                
             # Get visible area
             visibleArea = self.getVisibleCells()
             startRow, startCol, endRow, endCol = visibleArea
@@ -237,6 +269,9 @@ class Game:
                     
             # Draw trees
             self._updateAndDrawTrees(startRow, startCol, endRow, endCol)
+            
+            # Draw healing bursts
+            self._drawHealingBursts()
             
             # Draw character
             charPos = self.character.getPosition()
@@ -304,6 +339,16 @@ class Game:
     def _isTreeVisible(self, treeRow, treeCol, startRow, startCol, endRow, endCol):
         return (startCol-1 <= treeCol <= endCol+1 and 
                 startRow-1 <= treeRow <= endRow+1)
+    
+    def endGame(self):
+        """Mark game as over without drawing immediately"""
+        self.gameOver = True
+
+    def displayStatisticsGraph(self):
+        # Implement the logic to display the statistics graph
+        # This could involve drawing the graph on the screen using the collected statistics
+        print("Displaying statistics graph...")
+        # Example: Plotting the statistics using a library or custom drawing logic
 
     def updateCamera(self):
         charX, charY = self.character.getPosition()
@@ -313,9 +358,137 @@ class Game:
     def setZoom(self, newZoom):
         self.zoomLevel = max(self.minZoom, min(self.maxZoom, newZoom))
         self.updateCamera()
-
+    
+    def drawEndGameGraph(self):
+        # Clear the screen
+        drawRect(0, 0, self.windowWidth, self.windowHeight, fill='black')
+        
+        # Draw graph title
+        drawLabel('Game Statistics', self.windowWidth // 2, 30,
+                fill='white', bold=True, size=24)
+        
+        # Set up graph dimensions
+        margin = 50
+        graphWidth = self.windowWidth - 2 * margin
+        graphHeight = self.windowHeight - 2 * margin - 60  # Extra space for title
+        
+        # Draw axes
+        startX = margin
+        startY = self.windowHeight - margin
+        
+        drawLine(startX, startY, startX + graphWidth, startY, fill='white')  # X axis
+        drawLine(startX, startY, startX, startY - graphHeight, fill='white')  # Y axis
+        
+        # Set up stats with their ranges and colors
+        stats_config = {
+            'deterioration': {
+                'color': 'red',
+                'min': 0,
+                'max': 1,
+                'label': 'Deterioration'
+            },
+            'power': {
+                'color': 'yellow',
+                'min': 0,
+                'max': max(self.statistics['power']) if self.statistics['power'] else 1,
+                'label': 'Healing Power'
+            },
+            'speed': {
+                'color': 'green',
+                'min': 0,
+                'max': max(self.statistics['speed']) if self.statistics['speed'] else 1,
+                'label': 'Movement Speed'
+            },
+            'healingRadius': {
+                'color': 'blue',
+                'min': 0,
+                'max': max(self.statistics['healingRadius']) if self.statistics['healingRadius'] else 1,
+                'label': 'Healing Radius'
+            }
+        }
+        
+        # Draw legend
+        legendX = margin + 20
+        legendY = margin + 30
+        for stat, config in stats_config.items():
+            drawRect(legendX, legendY, 20, 10, fill=config['color'])
+            drawLabel(f"{config['label']} ({config['min']:.1f}-{config['max']:.1f})", 
+                    legendX + 100, legendY + 5,
+                    fill='white', align='left')
+            legendY += 25
+        
+        # Plot data
+        times = self.statistics['timestamps']
+        if not times:
+            return
+            
+        timeRange = times[-1] - times[0]
+        
+        for stat, config in stats_config.items():
+            data = self.statistics[stat]
+            if not data:
+                continue
+            
+            # Plot points
+            points = []
+            for i in range(len(data)):
+                # X coordinate based on time
+                x = startX + ((times[i] - times[0]) / timeRange) * graphWidth
+                
+                # Y coordinate based on value range
+                value_range = config['max'] - config['min']
+                if value_range == 0:  # Avoid division by zero
+                    normalized = 1
+                else:
+                    normalized = (data[i] - config['min']) / value_range
+                y = startY - normalized * graphHeight
+                
+                points.append((x, y))
+            
+            # Draw connecting lines
+            if len(points) > 1:
+                for i in range(len(points) - 1):
+                    drawLine(points[i][0], points[i][1],
+                            points[i+1][0], points[i+1][1],
+                            fill=config['color'],
+                            lineWidth=2)
+            
+            # Draw value range markers on Y axis
+            drawLabel(f'{config["max"]:.1f}', 
+                    startX - 10, 
+                    startY - graphHeight,
+                    fill=config['color'],
+                    align='right')
+            drawLabel(f'{config["min"]:.1f}', 
+                    startX - 10,
+                    startY,
+                    fill=config['color'],
+                    align='right')
+        
+        # Draw time markers on X axis
+        timeMarkers = [0, timeRange/2, timeRange]
+        for time in timeMarkers:
+            x = startX + (time / timeRange) * graphWidth
+            drawLine(x, startY, x, startY + 5, fill='white')
+            drawLabel(f'{int(time)}s', x, startY + 15, 
+                    fill='white', align='center')
+            
     #====Section debugged by Claude 3.5, very complex, mostly attempted to be written by me, but some details added by Claude====
     def drawUI(self):
+        # Infinite mode
+        if self.isInfiniteMode and not self.gameOver:
+            # Draw end game button
+            buttonWidth = 100
+            buttonHeight = 30
+            buttonX = self.windowWidth // 2
+            buttonY = 30
+            
+            drawRect(buttonX - buttonWidth//2, buttonY - buttonHeight//2,
+                    buttonWidth, buttonHeight,
+                    fill='darkRed', border='white')
+            drawLabel('End Game', buttonX, buttonY,
+                    fill='white', bold=True)
+        
         # Draw instructions in top left
         instructions = [
             "Controls:",
@@ -344,32 +517,30 @@ class Game:
                      fill='white', bold=True,
                      size=14)
 
-        # Draw timer
-        elapsedTime = time.time() - self.startTime
-        remainingTime = max(0, self.gameTime - elapsedTime)
-        minutes = int(remainingTime // 60)
-        seconds = int(remainingTime % 60)
-        
-        timerColor = 'white'
-        if remainingTime <= 30:
-            timerColor = 'red'
-        elif remainingTime <= 60:
-            timerColor = 'orange'
-        
-        drawLabel(f"Time: {minutes:02d}:{seconds:02d}",
-                 self.windowWidth - 100, 30,
-                 fill=timerColor, bold=True, size=24)
+        # Draw timer only in normal mode
+        if not self.isInfiniteMode:
+            elapsedTime = time.time() - self.startTime
+            remainingTime = max(0, self.gameTime - elapsedTime)
+            minutes = int(remainingTime // 60)
+            seconds = int(remainingTime % 60)
+            
+            timerColor = 'white'
+            if remainingTime <= 30:
+                timerColor = 'red'
+            elif remainingTime <= 60:
+                timerColor = 'orange'
+            
+            drawLabel(f"Time: {minutes:02d}:{seconds:02d}",
+                     self.windowWidth - 100, 30,
+                     fill=timerColor, bold=True, size=24)
 
         # Draw global deterioration bar
         totalCells = 0
         deterioratedCells = 0
-        for row in range(self.worldHeight):
-            for col in range(self.worldWidth):
-                key = self.textureManager.getCellKey(row, col)
-                cell = self.textureManager.cellStates.get(key)
-                if cell and cell['terrain'] != 'water':
-                    totalCells += 1
-                    deterioratedCells += cell['lifeRatio']
+        for key, cell in self.textureManager.cellStates.items():
+            if cell['terrain'] != 'water':
+                totalCells += 1
+                deterioratedCells += cell['lifeRatio']
 
         if totalCells > 0:
             deteriorationRatio = deterioratedCells / totalCells
@@ -420,14 +591,15 @@ class Game:
         abilityY = startY + slotSize/2
         self._drawAbilityIcon(abilityX, abilityY, abilitySize)
 
-        # Check for game over conditions
-        if deteriorationRatio >= 0.8 or remainingTime <= 0:
-            self.gameOver = True
-            self.gameWon = False
-        elif remainingTime <= 0 and deteriorationRatio < 0.8:
-            self.gameOver = True
-            self.gameWon = True
-
+        # Update game over conditions
+        if not self.isInfiniteMode:
+            if deteriorationRatio >= 0.8:
+                self.gameOver = True
+                self.gameWon = False
+            elif remainingTime <= 0:
+                self.gameOver = True
+                self.gameWon = (deteriorationRatio < 0.8)  # Win if under 80% deterioration when time runs out
+        
         # Draw game over screen if needed
         if self.gameOver:
             self._drawGameOverScreen()
@@ -440,25 +612,51 @@ class Game:
                     fill='gray', opacity=30,
                     border='white', borderWidth=1)
         
+        # Group equipment by type and count
+        equipment_counts = {}
+        for eqType, data in self.inventory.items():
+            if data['count'] > 0:
+                equipment_counts[eqType] = data['count']
+        
         # Draw collected equipment
         currentSlot = 0
-        for eqType, data in self.inventory.items():
-            if data['count'] > 0 and currentSlot < slots:
+        for eqType, count in equipment_counts.items():
+            if currentSlot < slots:  # Make sure we don't exceed available slots
                 x = startX + (slotSize + spacing) * currentSlot
                 y = startY
                 
-                # Draw equipment icon
+                # Draw background circle
                 drawCircle(x + slotSize/2, y + slotSize/2,
                           slotSize/2 - 5,
-                          fill=Equipment.TYPES[eqType]['color'])
-                drawLabel(Equipment.TYPES[eqType]['symbol'],
-                         x + slotSize/2, y + slotSize/2,
-                         fill='white', bold=True)
+                          fill=Equipment.TYPES[eqType]['color'],
+                          opacity=40)
+                
+                # Draw equipment sprite if available
+                if eqType in Equipment.sprites and Equipment.sprites[eqType]:
+                    sprite = Equipment.sprites[eqType]
+                    icon_size = slotSize * 0.8  # Slightly smaller than slot
+                    drawImage(sprite,
+                             x + slotSize/2 - icon_size/2,
+                             y + slotSize/2 - icon_size/2,
+                             width=icon_size,
+                             height=icon_size)
+                else:
+                    # Fallback to symbol if sprite not available
+                    drawLabel(Equipment.TYPES[eqType]['symbol'],
+                             x + slotSize/2, y + slotSize/2,
+                             fill='white', bold=True,
+                             size=20)
                 
                 # Draw count if more than 1
-                if data['count'] > 1:
-                    drawLabel(str(data['count']),
-                             x + slotSize - 5, y + 10,
+                if count > 1:
+                    # Draw count with background for better visibility
+                    countX = x + slotSize - 10
+                    countY = y + 10
+                    # Draw background circle for count
+                    drawCircle(countX, countY, 10,
+                              fill='black', opacity=60)
+                    drawLabel(str(count),
+                             countX, countY,
                              fill='white', bold=True,
                              size=14)
                 
@@ -544,19 +742,44 @@ class Game:
                  self.windowWidth / 2, titleY + 100,
                  fill='gray', size=16)
         
+        # Draw statistics graph if game is over
+        if self.gameOver:
+            self.drawEndGameGraph()
 
     def emitHealingWave(self):
-        """Handle healing wave special ability"""
         currentTime = time.time()
         if self.character.canUseHealingWave(currentTime):
-            # Start the healing wave animation
-            if self.character.emitHealingWave(currentTime):
-                # Apply the healing effect
-                healAmount = self.character.healingWave['healAmount']  # Get heal amount from character
-                self.textureManager.applyGlobalHealing(healAmount)
-                return True
-        return False
+            # Create healing burst effect
+            self.healingBursts.append({
+                'x': self.character.position['x'],
+                'y': self.character.position['y'],
+                'currentRadius': 0,
+                'maxRadius': self.character.healingWave['maxRadius'],
+                'startTime': currentTime,
+                'duration': 1.0,
+                'color': 'lightGreen',
+                'type': 'wave',
+                'healAmount': 0.2,
+                'baseOpacity': 20
+            })
             
+            # Store the current deterioration level before healing
+            currentDet = self.getCurrentDeterioration()
+            
+            # Apply healing through texture manager
+            self.textureManager.applyGlobalHealing(0.2)
+            
+            # Update statistics after healing (if in infinite mode)
+            if self.isInfiniteMode:
+                self.statistics['deterioration'].append(self.getCurrentDeterioration())
+                self.statistics['timestamps'].append(currentTime - self.startTime)
+            
+            # Start cooldown
+            self.character.healingWave['lastUsed'] = currentTime
+            return True
+        return False
+
+
     def drawMiniMap(self):
         if self.miniMapState != 'OFF' and self.miniMap:
             viewport = self.getVisibleCells()
@@ -610,11 +833,14 @@ class Game:
     def toggleDebugInfo(self):
         self.showDebugInfo = not self.showDebugInfo
 
+#====Section debugged by Claude 3.5, very complex, mostly attempted to be written by me, but some details added by Claude====
     def update(self):
         """Update game state including texture deterioration and trees"""
-
         startRow, startCol, endRow, endCol = self.getVisibleCells()
-        #====Section debugged by Claude 3.5, very complex, mostly attempted to be written by me, but some details added by Claude====
+        
+        # Check for equipment collection
+        self._checkEquipmentCollection()
+        
         # Only update terrain in and around visible area
         padding = 2
         for row in range(max(0, startRow-padding), min(self.worldHeight, endRow+padding)):
@@ -627,14 +853,15 @@ class Game:
         
         self.textureManager.updateDeterioration(self.character)
         
-        # Only update trees in visible area
-        for tree, (treeRow, treeCol) in self.trees: 
+        # Update healing effects
+        self._updateHealingEffects()
+        
+        # Update trees in visible area
+        for tree, (treeRow, treeCol) in self.trees:
             if (startCol-1 <= treeCol <= endCol+1 and 
                 startRow-1 <= treeRow <= endRow+1):
-                # Generate tree if it hasn't been generated yet
                 if not tree.isGenerated:
                     tree.ensureGenerated()
-                
                 surroundingRatios = self.getSurroundingTerrainHealth(tree.baseX, tree.baseY)
                 tree.updateTreeLife(surroundingRatios)
                 tree.needsUpdate = False
@@ -643,8 +870,7 @@ class Game:
                 tree.isGenerated = False
                 tree.branches = []
                 tree.leaves = []
-        #====Section debugged by Claude 3.5, very complex, mostly attempted to be written by me, but some details added by Claude====
-
+#====Section debugged by Claude 3.5, very complex, mostly attempted to be written by me, but some details added by Claude====
     def debugTrees(self):
         """Print info about tree positions and visibility for debugging"""
         # Get current viewport bounds
@@ -710,14 +936,17 @@ class Game:
         self.equipment = []  # Clear existing equipment
         ok_terrain = {'dirt', 'tall_grass', 'path_rocks'}
         
+        # Adjust equipment density for infinite mode
+        density = self.equipmentDensity * 1.5 if self.isInfiniteMode else self.equipmentDensity
+        
         for row in range(self.worldHeight):
             for col in range(self.worldWidth):
                 try:
                     cell = self.grid[row][col]
-                    if cell['terrain'] in ok_terrain and random.random() < self.equipmentDensity:
+                    if cell['terrain'] in ok_terrain and random.random() < density:
                         x = (col + 0.5) * self.baseCellWidth
                         y = (row + 0.5) * self.baseCellHeight
-                        self.equipment.append(Equipment(x, y))  # Using simplified Equipment constructor
+                        self.equipment.append(Equipment(x, y))
                         print(f"Spawned equipment at ({row}, {col})")
                 except Exception as e:
                     print(f"Equipment spawn failed at {row}, {col}: {e}")
@@ -725,73 +954,91 @@ class Game:
         print(f"Total equipment spawned: {len(self.equipment)}")
 
     def updateGame(self, dt):
-        # Add to existing update method
-        self._checkEquipmentCollection()
-        self._updateHealingBursts()
+        if not self.gameOver:
+            # Remove statistics tracking from here since it's already in update()
+            if not self.isInfiniteMode:
+                remainingTime = self.gameTime - (time.time() - self.startTime)
+                if remainingTime <= 0:
+                    self.gameOver = True
 
     def _checkEquipmentCollection(self):
         charX, charY = self.character.getPosition()
-        collection_radius = self.character.visual['baseSize']  # Just use character's base size
+        char_size = self.character.visual['baseSize']
         
         for equip in self.equipment[:]:
             if not equip.collected:
                 dx = charX - equip.x
                 dy = charY - equip.y
-                distance = math.sqrt(dx*dx + dy*dy)
                 
-                if distance < collection_radius:
-                    bonuses = equip.getBonuses()
-                    equip_type = bonuses['type']
-                    
-                    if bonuses['isInstantUse']:
-                        # For burst equipment, apply effect immediately
+                if dx*dx + dy*dy < (char_size * char_size):
+                    try:
+                        equip_type = equip.type
+                        bonuses = equip.getBonuses()
+                        
+                        equip.collected = True
+                        if equip in self.equipment:
+                            self.equipment.remove(equip)
+                        
                         if equip_type == 'burst':
-                            self._applyBurstHeal(charX, charY, bonuses)
-                    else:
-                        # For collectible equipment, add to inventory
-                        self.inventory[equip_type]['count'] += 1
-                        if equip_type == 'radius':
-                            self.character.restorationRadiusMultiplier += bonuses['radius_bonus']
-                            self.inventory[equip_type]['total_bonus'] += bonuses['radius_bonus']
-                        elif equip_type == 'power':
-                            self.character.strength += bonuses['strength_bonus']
-                            self.inventory[equip_type]['total_bonus'] += bonuses['strength_bonus']
-                    
-                    equip.collected = True
-                    self.equipment.remove(equip)
+                            self._applyBurstHeal(equip.x, equip.y, bonuses)
+                        else:
+                            if equip_type in self.inventory:
+                                self.inventory[equip_type]['count'] += 1
+                                if equip_type == 'radius':
+                                    # Ensure the radius bonus is applied correctly
+                                    bonus = bonuses.get('radius_bonus', 1.0)  # Default bonus if not specified
+                                    self.character.restorationRadiusMultiplier += bonus
+                                    self.inventory[equip_type]['total_bonus'] += bonus
+                                elif equip_type == 'power':
+                                    bonus = bonuses.get('strength_bonus', 0.75)
+                                    self.character.strength += bonus
+                                    self.inventory[equip_type]['total_bonus'] += bonus
+                                elif equip_type == 'speed':
+                                    bonus = bonuses.get('speed_bonus', 0.2)
+                                    self.character.setSpeed(self.character.speed + bonus)
+                                    self.inventory[equip_type]['total_bonus'] += bonus
+                    except Exception as e:
+                        print(f"Error collecting equipment: {e}")
+                        continue
 
     def _applyBurstHeal(self, x, y, bonuses):
-        radius = bonuses['heal_radius']
+        """Apply burst heal with reduced radius and matching visuals"""
+        if 'heal_radius' not in bonuses or 'heal_amount' not in bonuses:
+            print("Invalid burst bonuses")
+            return
+            
+        radius = bonuses['heal_radius']  # Now much smaller (2 cells in each direction)
         healing = bonuses['heal_amount']
         
-        # Create burst effect
+        # Create burst visual effect
+        current_time = time.time()
         self.healingBursts.append({
-            'x': x, 'y': y,
+            'x': x,
+            'y': y,
             'currentRadius': 0,
-            'maxRadius': radius * self.baseCellWidth,
-            'startTime': time.time(),
-            'duration': 1.2,
-            'color': Equipment.TYPES['burst']['color']
+            'maxRadius': radius * self.baseCellWidth * 2,  # Visual radius matches gameplay radius
+            'startTime': current_time,
+            'duration': 0.6,  # Faster animation for smaller radius
+            'color': 'yellow',
+            'type': 'burst',
+            'healAmount': healing,
+            'baseOpacity': 70
         })
         
-        # Heal cells in radius
+        # Apply healing effect
         center_col = int(x / self.baseCellWidth)
         center_row = int(y / self.baseCellHeight)
         
+        # Iterate through 5x5 area
         for row in range(center_row - radius, center_row + radius + 1):
             for col in range(center_col - radius, center_col + radius + 1):
                 if not self._isValidCell(row, col):
                     continue
                     
-                # Check if within circle
-                dx = col - center_col
-                dy = row - center_row
-                if (dx*dx + dy*dy) > radius*radius:
-                    continue
-                    
                 key = self.textureManager.getCellKey(row, col)
                 cell = self.textureManager.cellStates.get(key)
                 if cell and cell['terrain'] != 'water':
+                    # Apply strong healing effect within small radius
                     cell['lifeRatio'] = max(0.0, cell['lifeRatio'] - healing)
 
     def _updateHealingBursts(self):
@@ -802,37 +1049,52 @@ class Game:
             if currentTime - burst['startTime'] < burst['duration']:
                 # Update radius
                 progress = (currentTime - burst['startTime']) / burst['duration']
-                burst['currentRadius'] = burst['maxRadius'] * progress
+                burst['currentRadius'] = burst['maxRadius'] * (0.5 - 0.5 * math.cos(progress * math.pi))
                 active_bursts.append(burst)
                 
         self.healingBursts = active_bursts
 
     def _drawHealingBursts(self):
+        """Draw healing burst effects with appropriate sizing"""
+        current_time = time.time()
+        
         for burst in self.healingBursts:
-            x, y = self.worldToScreen(burst['x'], burst['y'])
-            t = (time.time() - burst['startTime']) / burst['duration']
-            
-            # Smooth expansion
-            radius = burst['maxRadius'] * (0.5 - 0.5 * math.cos(t * math.pi))
-            radius *= self.zoomLevel
-            
-            # Fade out
-            fade = 1 - (t * t)  # Quadratic fade
-            border_width = max(2, min(4, self.zoomLevel))
-            
-            drawCircle(x, y, radius,
-                      fill=None,
-                      border=burst['color'],
-                      borderWidth=border_width,
-                      opacity=100 * fade)
+            if current_time - burst['startTime'] < burst['duration']:
+                progress = (current_time - burst['startTime']) / burst['duration']
+                
+                # Convert world to screen coordinates
+                screenX, screenY = self.worldToScreen(burst['x'], burst['y'])
+                
+                if burst['type'] == 'burst':
+                    # Create pulsing wave effect
+                    wave_factor = math.sin(progress * math.pi * 3) * 0.2
+                    base_radius = burst['maxRadius'] * (0.5 - 0.5 * math.cos(progress * math.pi))
+                    radius = base_radius * (1 + wave_factor) * self.zoomLevel
+                    
+                    # Calculate opacity with wave-like pulsing
+                    base_opacity = burst['baseOpacity']
+                    fade = (1 - progress) * (0.7 + 0.3 * math.sin(progress * math.pi * 4))
+                    opacity = base_opacity * fade
+                    
+                    # Draw main burst circle
+                    drawCircle(screenX, screenY, radius,
+                            fill=burst['color'],
+                            opacity=opacity * 0.3)  # Semi-transparent fill
+                    
+                    # Draw ring effect
+                    drawCircle(screenX, screenY, radius,
+                            fill=None,
+                            border=burst['color'],
+                            borderWidth=max(2, min(4, self.zoomLevel)),
+                            opacity=opacity)
 
     def drawInventory(self):
         # Inventory bar settings
         slotSize = 40
         spacing = 5
-        slots = 10
+        slots = 5  # Reduced number of slots to match UI
         barWidth = (slotSize * slots) + (spacing * (slots - 1))
-        startX = 20
+        startX = self.windowWidth/2 - barWidth/2  # Center the inventory
         startY = self.windowHeight - 60
         
         # inventory background
@@ -840,36 +1102,8 @@ class Game:
                 barWidth + 10, slotSize + 10,
                 fill='black', opacity=40)
         
-        # Draw slots
-        for i in range(slots):
-            x = startX + (slotSize + spacing) * i
-            drawRect(x, startY, slotSize, slotSize,
-                    fill='gray', opacity=30,
-                    border='white', borderWidth=1.5)
-        
-        # Draw collected equipment
-        currentSlot = 0
-        for eqType, data in self.inventory.items():
-            if data['count'] > 0:
-                x = startX + (slotSize + spacing) * currentSlot
-                y = startY
-                
-                # equipment icon
-                drawCircle(x + slotSize/2, y + slotSize/2,
-                          slotSize/2 - 5,
-                          fill=Equipment.TYPES[eqType]['color'])
-                drawLabel(Equipment.TYPES[eqType]['symbol'],
-                         x + slotSize/2, y + slotSize/2,
-                         fill='white', bold=True)
-                
-                # Draw count if more than 1
-                if data['count'] > 1:
-                    drawLabel(str(data['count']),
-                             x + slotSize - 5, y + 10,
-                             fill='white', bold=True,
-                             size=14)
-                
-                currentSlot += 1
+        # Draw slots and equipment
+        self._drawInventorySlots(startX, startY, slotSize, spacing, slots)
 
     def _drawGameOverScreen(self):
         # Semi-transparent overlay
@@ -885,7 +1119,10 @@ class Game:
         else:
             message = "Game Over"
             color = 'red'
-            subMessage = "The deterioration level became too high!"
+            if time.time() - self.startTime >= self.gameTime:
+                subMessage = "Time's up! Deterioration was too high!"
+            else:
+                subMessage = "The deterioration level became too high!"
         
         drawLabel(message,
                  self.windowWidth / 2, titleY,
@@ -900,3 +1137,93 @@ class Game:
         drawLabel("Press ESC to return to menu",
                  self.windowWidth / 2, titleY + 100,
                  fill='gray', size=16)
+    def _spawnCharacter(self):
+        """Spawn character on any walkable terrain"""
+        valid_positions = []
+        
+        # First collect all valid positions
+        for row in range(self.worldHeight):
+            for col in range(self.worldWidth):
+                try:
+                    x = (col + 0.5) * self.baseCellWidth
+                    y = (row + 0.5) * self.baseCellHeight
+                    if self.isTerrainWalkable(x, y):
+                        valid_positions.append((row, col))
+                except Exception as e:
+                    print(f"Error checking position ({row}, {col}): {e}")
+                    continue
+        
+        if valid_positions:
+            # Try positions until we find one that works
+            random.shuffle(valid_positions)
+            row, col = random.choice(valid_positions)
+            x = (col + 0.5) * self.baseCellWidth
+            y = (row + 0.5) * self.baseCellHeight
+            self.character.teleport(x, y)
+            print(f"Character spawned at ({row}, {col})")
+            return True
+        
+        raise Exception("No valid spawn position found!")
+
+    def _updateHealingEffects(self):
+        active_bursts = []
+        currentTime = time.time()
+        
+        for burst in self.healingBursts:
+            progress = (currentTime - burst['startTime']) / burst['duration']
+            if progress < 1.0:
+                # Apply healing to cells within current radius
+                centerX = burst['x']
+                centerY = burst['y']
+                currentRadius = burst['maxRadius'] * (0.5 - 0.5 * math.cos(progress * math.pi))
+                
+                # Get affected cells
+                centerCol = int(centerX / self.baseCellWidth)
+                centerRow = int(centerY / self.baseCellHeight)
+                radius_cells = int(currentRadius / self.baseCellWidth)
+                
+                for row in range(centerRow - radius_cells, centerRow + radius_cells + 1):
+                    for col in range(centerCol - radius_cells, centerCol + radius_cells + 1):
+                        if not self._isValidCell(row, col):
+                            continue
+                            
+                        cellX = (col + 0.5) * self.baseCellWidth
+                        cellY = (row + 0.5) * self.baseCellHeight
+                        dx = cellX - centerX
+                        dy = cellY - centerY
+                        
+                        if (dx*dx + dy*dy) <= currentRadius*currentRadius:
+                            key = self.textureManager.getCellKey(row, col)
+                            cell = self.textureManager.cellStates.get(key)
+                            if cell and cell['terrain'] != 'water':
+                                # Apply healing with power bonus
+                                cell['lifeRatio'] = max(0.0, cell['lifeRatio'] - burst['healAmount'])
+                
+                burst['currentRadius'] = currentRadius
+                active_bursts.append(burst)
+        
+        self.healingBursts = active_bursts
+
+    def getCurrentDeterioration(self):
+        """Calculate current average deterioration level across the map"""
+        totalDet = 0.0
+        count = 0
+        
+        for key, cell in self.textureManager.cellStates.items():
+            if cell['terrain'] != 'water':
+                totalDet += cell['lifeRatio']
+                count += 1
+        
+        return totalDet / max(1, count)  # Returns value between 0 and 1
+
+    def isEndGameButtonClicked(self, mouseX, mouseY):
+        if self.isInfiniteMode and not self.gameOver:
+            buttonWidth = 100
+            buttonHeight = 30
+            buttonX = self.windowWidth // 2
+            buttonY = 30
+            
+            # Check if click is within button bounds
+            return (abs(mouseX - buttonX) <= buttonWidth//2 and 
+                    abs(mouseY - buttonY) <= buttonHeight//2)
+        return False

@@ -166,7 +166,7 @@ class Character:
             radius = self.getRestorationRadius() * zoom
             
             # Main circle opacity based on strength
-            base_opacity = 30 + (40 * min(1.0, self.strength))  # 30-70 range
+            base_opacity = 5 + (10 * min(1.0, self.strength)) 
             
             # Draw main circle
             drawCircle(x, y, radius,
@@ -177,11 +177,11 @@ class Character:
             drawCircle(x, y, radius,
                       fill=None, 
                       border='lightBlue',
-                      borderWidth=max(2, zoom * 0.5),
-                      opacity=100)
+                      borderWidth=max(2, zoom * 0.4),
+                      opacity=80)
             
             # Add pulse effect
-            pulse = radius * (0.8 + 0.2 * math.sin(self.animationFrame))
+            pulse = radius * (0.8 + 0.2 * math.sin(self.animationFrame*0.2))
             drawCircle(x, y, pulse,
                       fill='lightBlue',
                       opacity=base_opacity * 0.5)
@@ -259,9 +259,9 @@ class Character:
         self.strength = max(self.minStrength, min(self.maxStrength, strength))
 
     def getRestorationRadius(self):
-        # Adjusted to provide a smaller minimum radius
+        # Calculate the restoration radius based on strength and multiplier
         baseRadius = self.strength * self.restorationRadiusMultiplier
-        minRadius = self.visual['baseSize']  # Reduced minimum radius
+        minRadius = self.visual['baseSize']  # Ensure a minimum radius
         return max(baseRadius, minRadius)
 
     def teleport(self, x, y):

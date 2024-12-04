@@ -14,8 +14,8 @@ def onAppStart(app):
     app.game = None
     app.mapEditor = None
 
-def initializeGame(app, customMap=None):
-    app.game = Game(customMap)
+def initializeGame(app, customMap=None, isInfiniteMode=False):
+    app.game = Game(customMap, isInfiniteMode=isInfiniteMode)
 
 def gameKeyEvents(app, key):
     if key == 'escape':
@@ -45,7 +45,9 @@ def onKeyPress(app, key):
             if key == 'escape':
                 app.state = 'menu'
         else:
-            if key == 'space':
+            if key == 'e' and app.game.isInfiniteMode:
+                app.game.endGame()
+            elif key == 'space':
                 app.game.emitHealingWave()
             elif key == 'escape':
                 app.state = 'menu'
@@ -103,9 +105,16 @@ def onMousePress(app, mouseX, mouseY):
             if terrainMap:
                 initializeGame(app, customMap=terrainMap)
                 app.state = 'game'
-                app.game.startTime = time.time()  # Reset game timer
-        else:
-            app.mapEditor.updateMousePos(mouseX, mouseY)
+                app.game.startTime = time.time()
+        elif app.mapEditor.isOverInfiniteButton(mouseX, mouseY):
+            terrainMap = app.mapEditor.generateTerrainMap()
+            if terrainMap:
+                initializeGame(app, customMap=terrainMap, isInfiniteMode=True)
+                app.state = 'game'
+    elif app.state == 'game' and app.game.isInfiniteMode:
+        # Check if the end game button is clicked
+        if app.game.isEndGameButtonClicked(mouseX, mouseY):
+            app.game.endGame()
 
 def onStep(app):
     if app.state == 'game' and not app.game.gameOver:
